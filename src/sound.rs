@@ -6,6 +6,7 @@ use amane::{Audio, Button, Center, Column, Horizontal, LayerWindow, Monitor, Rec
 use crate::panels::{self, Which};
 use crate::theme::{Theme, alpha, mix};
 use crate::ui::{bold, hover, icon, label, round_button, section, set_hover, slider};
+use crate::volume::{self, Level};
 
 /*
  * the sound dropdown: volume and mute for the speakers and the microphone, and which device each one uses.
@@ -95,14 +96,6 @@ fn run(arguments: &'static [&'static str], name: String) {
     });
 }
 
-fn set_volume(value: f32) {
-    Audio::set_volume((value * 100.0).round() as u8);
-}
-
-fn set_microphone(value: f32) {
-    Audio::set_microphone_volume((value * 100.0).round() as u8);
-}
-
 fn device_row(t: &Theme, id: &str, device: &Device, active: bool, kind: &'static [&'static str]) -> Rectangle {
     let hot = hover(id);
 
@@ -139,6 +132,7 @@ struct Block<'a> {
     muted: bool,
     mute: fn(),
     changed: fn(f32),
+    scrolled: fn(i32),
     devices: &'a [Device],
     default: &'a str,
     kind: &'static [&'static str],
@@ -146,13 +140,13 @@ struct Block<'a> {
 
 // the slider row and the devices under it
 fn block(t: &Theme, block: &Block) -> (Column, f32) {
-    let Block { title, id, glyph_on, glyph_off, percent, muted, mute, changed, devices, default, kind } = *block;
+    let Block { title, id, glyph_on, glyph_off, percent, muted, mute, changed, scrolled, devices, default, kind } = *block;
 
     let level = f32::from(percent) / 100.0;
 
     let controls = Row::new(children![
         round_button(&format!("{id}-mute"), t, if muted { glyph_off } else { glyph_on }, if muted { t.faint } else { t.accent }, move |_| mute()),
-        slider(t, 250.0, if muted { 0.0 } else { level }, changed),
+        slider(t, 250.0, if muted { 0.0 } else { level }, changed, scrolled),
         Rectangle::new().width(44.0).height(20.0).align_child(amane::End, Center).child(label(format!("{percent}%"), 12.0, t.dim)),
     ])
     .gap(10.0)
@@ -197,10 +191,11 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
             id: "snd-out",
             glyph_on: "\u{f028}",
             glyph_off: "\u{f026}",
-            percent: audio.volume(),
+            percent: Level::Output.shown(audio.volume()),
             muted: audio.muted(),
             mute: Audio::toggle_mute,
-            changed: set_volume,
+            changed: volume::drag_output,
+            scrolled: volume::scroll_output,
             devices: &devices.sinks,
             default: &devices.default_sink,
             kind: &["set-default-sink"],
@@ -214,10 +209,11 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
             id: "snd-in",
             glyph_on: "\u{f130}",
             glyph_off: "\u{f131}",
-            percent: audio.microphone_volume(),
+            percent: Level::Input.shown(audio.microphone_volume()),
             muted: audio.microphone_muted(),
             mute: Audio::toggle_microphone_mute,
-            changed: set_microphone,
+            changed: volume::drag_input,
+            scrolled: volume::scroll_input,
             devices: &devices.sources,
             default: &devices.default_source,
             kind: &["set-default-source"],

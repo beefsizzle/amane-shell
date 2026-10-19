@@ -8,6 +8,7 @@ use crate::panels::{self, Panels, Which};
 use crate::sys::{Sys, format_rate};
 use crate::theme::{Theme, alpha, mix};
 use crate::ui::{bold, hover, icon, label, meter, round_button, set_hover, slider};
+use crate::volume::{self, Level};
 
 const WIDTH: f32 = 372.0;
 const INNER: f32 = WIDTH - 28.0;
@@ -218,14 +219,11 @@ fn tiles(t: &Theme) -> Column {
 
 // ---------------------------------------------------------------- volume
 
-fn set_volume(value: f32) {
-    Audio::set_volume((value * 100.0).round() as u8);
-}
-
 fn volume(t: &Theme) -> Row {
     let audio = Audio::read();
 
-    let level = audio.volume() as f32 / 100.0;
+    let percent = Level::Output.shown(audio.volume());
+    let level = f32::from(percent) / 100.0;
 
     let glyph = if audio.muted() {
         "\u{f026}"
@@ -237,12 +235,12 @@ fn volume(t: &Theme) -> Row {
 
     Row::new(children![
         round_button("v-mute", t, glyph, if audio.muted() { t.faint } else { t.accent }, |_| Audio::toggle_mute()),
-        slider(t, 250.0, if audio.muted() { 0.0 } else { level }, set_volume),
+        slider(t, 250.0, if audio.muted() { 0.0 } else { level }, volume::drag_output, volume::scroll_output),
         Rectangle::new()
             .width(44.0)
             .height(20.0)
             .align_child(amane::End, Center)
-            .child(label(format!("{}%", audio.volume()), 12.0, t.dim)),
+            .child(label(format!("{percent}%"), 12.0, t.dim)),
     ])
     .gap(10.0)
     .align(Center)

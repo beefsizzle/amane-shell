@@ -10,6 +10,7 @@ use crate::panels::{self, Which};
 use crate::weather::{Weather, describe};
 use crate::theme::{Theme, alpha, theme};
 use crate::ui::{bold, chip, icon, label};
+use crate::volume::Level;
 
 pub const HEIGHT: f32 = 36.0;
 
@@ -275,21 +276,13 @@ fn audio(t: &Theme, name: &str) -> Rectangle {
         "audio",
         t,
         STAT,
-        Row::new(children![icon(glyph, 13.0, t.accent), label(format!("{}%", audio.volume()), 12.0, t.fg)])
+        Row::new(children![icon(glyph, 13.0, t.accent), label(format!("{}%", Level::Output.shown(audio.volume())), 12.0, t.fg)])
             .gap(6.0)
             .align(Center),
     )
     .on_click(toggle_on(name, Which::Audio))
-    .on_scroll(|scroll| {
-        // up (negative) raises it, five percent a notch however many small events the notch is made of
-        let steps = crate::ui::wheel_steps(-scroll.y);
-
-        if steps != 0 {
-            let current = i32::from(Audio::read().volume());
-
-            Audio::set_volume((current + steps * 5).clamp(0, 100) as u8);
-        }
-    })
+    // up (negative) raises it, five percent a notch however many small events the notch is made of
+    .on_scroll(|scroll| crate::volume::scroll_output(crate::ui::wheel_steps(-scroll.y)))
 }
 
 // a plain icon: showing whether something is connected would keep Bluetooth polled all the time (see btstate.rs)

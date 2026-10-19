@@ -112,8 +112,9 @@ pub fn chip(id: &str, theme: &Theme, width: f32, content: impl Widget + 'static)
 
 // ---------------------------------------------------------------- controls
 
-/// a horizontal slider. `value` is 0..1, `changed` gets the new 0..1 while dragging
-pub fn slider(t: &Theme, width: f32, value: f32, changed: fn(f32)) -> Rectangle {
+/// a horizontal slider. `value` is 0..1, `changed` gets the new 0..1 while dragging, and `scrolled` gets whole wheel
+/// notches while the pointer is over it, up positive
+pub fn slider(t: &Theme, width: f32, value: f32, changed: fn(f32), scrolled: fn(i32)) -> Rectangle {
     let value = value.clamp(0.0, 1.0);
 
     let layer = |child: Rectangle| {
@@ -137,6 +138,8 @@ pub fn slider(t: &Theme, width: f32, value: f32, changed: fn(f32)) -> Rectangle 
         .height(18.0)
         .cursor(Pointer)
         .on_drag(move |point: Point| changed((point.x / width).clamp(0.0, 1.0)))
+        // up (negative) raises it
+        .on_scroll(move |scroll| scrolled(wheel_steps(-scroll.y)))
         .child(Stack::new(children![layer(track), layer(filled), knob]))
 }
 
@@ -218,7 +221,8 @@ impl Wheel {
     }
 }
 
-/// the bar's volume chip, which has no service of its own to keep a `Wheel` in
+/// for the volume chip and the sliders, which have no service of their own to keep a `Wheel` in (only one of them is
+/// under the pointer at a time)
 pub fn wheel_steps(amount: f32) -> i32 {
     static WHEEL: std::sync::Mutex<Wheel> = std::sync::Mutex::new(Wheel::new());
 

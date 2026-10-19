@@ -20,6 +20,7 @@ mod sound;
 mod sync;
 mod sys;
 mod theme;
+mod volume;
 mod tray;
 mod traymenu;
 mod ui;
