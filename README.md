@@ -6,7 +6,11 @@ power dropdowns. Colours follow the wallpaper.
 
 ![screenshot](media/screenshot.jpg)
 
-[Demo video](media/demo.mp4)
+
+
+https://github.com/user-attachments/assets/252d8697-0cef-41c0-9103-a4b476d3f363
+
+
 
 ## Requirements
 
