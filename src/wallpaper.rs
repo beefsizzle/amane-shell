@@ -1,25 +1,36 @@
 use std::time::Duration;
 
-use amane::{Palette, Service};
+use amane::{Animation, Image, Palette, Service};
 
-// the wallpaper path lives in ~/.config/amane-shell/wallpaper, so it survives a restart
+// the wallpaper path lives in ~/.local/state/amane-shell/wallpaper, so it survives a restart
 pub struct Wallpaper {
-    pub path: String,  // the file that was chosen
-    pub shown: String, // the file that's drawn: a screen-sized copy, empty until it exists
+    pub path: String,             // the file that was chosen
+    pub shown: String,            // the file that's drawn: a screen-sized copy, empty until it exists
+    pub incoming: Option<String>, // a new copy fading in over `shown`
+    pub fade: Animation,          // how far it has, 0 to 1
 }
 
-fn config_file() -> std::path::PathBuf {
-    crate::cache::config_dir().join("wallpaper")
+// how long a new wallpaper takes to fade in
+const FADE: Duration = Duration::from_millis(450);
+
+// a copy that never decodes is faded in anyway after this long (and shows as nothing)
+const DECODE_WITHIN: Duration = Duration::from_secs(3);
+
+fn state_file() -> std::path::PathBuf {
+    crate::cache::state_dir().join("wallpaper")
 }
 
 fn initial() -> String {
+    // it used to be kept with the settings
+    crate::cache::move_from(&crate::cache::config_dir().join("wallpaper"), &state_file());
+
     if let Ok(path) = std::env::var("AMANE_WALLPAPER")
         && !path.is_empty()
     {
         return path;
     }
 
-    std::fs::read_to_string(config_file()).map(|text| text.trim().to_string()).unwrap_or_default()
+    std::fs::read_to_string(state_file()).map(|text| text.trim().to_string()).unwrap_or_default()
 }
 
 // the copy when it exists, the original when Amane can read it as it is, nothing otherwise
@@ -48,7 +59,7 @@ impl Service for Wallpaper {
 
         let shown = shown_for(&path);
 
-        Self { path, shown }
+        Self { path, shown, incoming: None, fade: Animation::new(0.0).duration(FADE) }
     }
 
     fn interval() -> Duration {
@@ -56,25 +67,55 @@ impl Service for Wallpaper {
     }
 }
 
-/// the screen-sized copy of the wallpaper exists now, draw it if that's the one that was chosen
+/*
+ * the screen-sized copy of the wallpaper exists now: fade it in if it's still the one chosen.
+ * Amane draws nothing for an image until it has been decoded, so swapping the picture straight away would show an
+ * empty frame first. the old wallpaper stays until the new one is decoded, then the new one fades in over it.
+ * decoding takes a moment, so this waits on a thread of its own
+ */
 pub fn display_ready(path: &str, display: &str) {
-    // checked and written under one lock: picking another wallpaper in between must not end up showing this one
-    let chosen = {
-        let mut wallpaper = Wallpaper::write();
+    let (path, display) = (path.to_string(), display.to_string());
 
-        let chosen = wallpaper.path == path && wallpaper.shown != display;
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
 
-        if chosen {
-            wallpaper.shown = display.to_string();
+        // asking also starts the decode
+        while !Image::loaded(&display) && started.elapsed() < DECODE_WITHIN {
+            std::thread::sleep(Duration::from_millis(16));
         }
 
-        chosen
-    };
+        // checked and written under one lock: picking another wallpaper meanwhile must not end up showing this one
+        let fading = {
+            let mut wallpaper = Wallpaper::write();
 
-    // and the colours only if it's still the one chosen
-    if chosen && Wallpaper::read().path == path {
-        retheme(path, display);
-    }
+            let fading = wallpaper.path == path && wallpaper.shown != display && wallpaper.incoming.as_deref() != Some(display.as_str());
+
+            if fading {
+                wallpaper.incoming = Some(display.clone());
+                wallpaper.fade = Animation::new(0.0).duration(FADE);
+                wallpaper.fade.to(1.0);
+            }
+
+            fading
+        };
+
+        if !fading {
+            return;
+        }
+
+        // the colours change as the picture starts to
+        retheme(&path, &display);
+
+        std::thread::sleep(FADE);
+
+        // once it covers the old one it becomes the wallpaper, unless an even newer one took its place
+        let mut wallpaper = Wallpaper::write();
+
+        if wallpaper.incoming.as_deref() == Some(display.as_str()) {
+            wallpaper.shown = display;
+            wallpaper.incoming = None;
+        }
+    });
 }
 
 // the palette is read from the small thumbnail when there is one, which is quicker than any wallpaper
@@ -94,7 +135,7 @@ pub fn apply(path: &str) -> bool {
     Wallpaper::write().path = path.to_string();
 
     // a failed write only means it won't survive a restart
-    let file = config_file();
+    let file = state_file();
 
     if let Some(folder) = std::path::Path::new(&file).parent() {
         let _ = std::fs::create_dir_all(folder);

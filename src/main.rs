@@ -144,7 +144,20 @@ fn main() {
 // no `.thumbnail()` here on purpose: Amane never evicts images loaded with it, so every wallpaper you tried would
 // stay in memory. the file is already a screen-sized copy (see wallpapers.rs), and a plain image is dropped when it stops being shown
 fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
-    let path = wallpaper::Wallpaper::read().shown.clone();
+    let (shown, incoming, fade) = {
+        let wallpaper = wallpaper::Wallpaper::read();
+
+        (wallpaper.shown.clone(), wallpaper.incoming.clone(), wallpaper.fade.value())
+    };
+
+    let base = Rectangle::new().width(Parent).height(Parent);
+
+    let mut picture = if shown.is_empty() { base.fill(amane::Color::BLACK) } else { base.fill(Image::cover(&shown)) };
+
+    // a new wallpaper fades in on top of the old one
+    if let Some(incoming) = &incoming {
+        picture = picture.child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade));
+    }
 
     LayerWindow::new()
         .width(amane::Full)
@@ -152,6 +165,6 @@ fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
         .layer(Layer::Background)
         .space(Zone::Ignore)
         .namespace("amane-wallpaper")
-        .visible(!path.is_empty())
-        .child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(path)))
+        .visible(!shown.is_empty() || incoming.is_some())
+        .child(picture)
 }

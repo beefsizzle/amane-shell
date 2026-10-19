@@ -14,7 +14,7 @@ use crate::ui::{Wheel, bold, icon, label};
 
 /*
  * the app launcher: type to filter, up/down to choose, enter to start.
- * apps you start often float to the top, the counts are kept in ~/.cache/amane-shell/launch-counts
+ * apps you start often float to the top, the counts are kept in ~/.local/state/amane-shell/launch-counts
  */
 pub struct Launcher {
     pub query: String,
@@ -38,12 +38,16 @@ const CELL_HEIGHT: f32 = 100.0;
 // the button next to the search box that opens the grid
 const SWITCH: f32 = 112.0;
 
+// how often each app was started. state, not cache: a cache cleaner would reset the order of the list
 fn counts_file() -> std::path::PathBuf {
-    crate::cache::cache_dir().join("launch-counts")
+    crate::cache::state_dir().join("launch-counts")
 }
 
 impl Service for Launcher {
     fn new() -> Self {
+        // it used to be kept with the caches
+        crate::cache::move_from(&crate::cache::cache_dir().join("launch-counts"), &counts_file());
+
         let counts = std::fs::read_to_string(counts_file())
             .unwrap_or_default()
             .lines()
