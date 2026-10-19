@@ -1,5 +1,6 @@
 use amane::{
-    Center, Color, Column, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Service, Stack, TextInput, children,
+    Center, Color, Column, Fingerprint, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Row, Service, Stack, TextInput,
+    children,
 };
 
 use crate::clock::Clock;
@@ -7,7 +8,8 @@ use crate::theme::{alpha, theme};
 use crate::ui::{bold, icon, label};
 use crate::wallpaper::Wallpaper;
 
-// the lock screen. the password is checked through PAM's `login` service, like a tty login.
+// the lock screen. the password is checked through PAM's `login` service, like a tty login, and an enrolled
+// fingerprint unlocks it too while the password field stays usable (see `Lock::use_fingerprint` in main.rs)
 
 pub fn view(_: &Monitor) -> LayerWindow {
     let t = theme();
@@ -17,13 +19,30 @@ pub fn view(_: &Monitor) -> LayerWindow {
     let user = std::env::var("USER").unwrap_or_else(|_| String::from("user"));
     let initial = user.chars().next().unwrap_or('?').to_uppercase().to_string();
 
+    let fingerprint = lock.fingerprint();
+    let reader = matches!(fingerprint, Fingerprint::Listening | Fingerprint::Retry | Fingerprint::NoMatch);
+
     let (status, status_color) = if lock.checking() {
         ("Checking\u{2026}", t.dim)
     } else if lock.failed() {
         ("Wrong password, try again", t.red)
+    } else if fingerprint == Fingerprint::NoMatch {
+        ("Fingerprint not recognised, try again", t.red)
+    } else if fingerprint == Fingerprint::Retry {
+        ("Couldn't read that, place your finger again", t.dim)
+    } else if reader {
+        ("Touch the reader or enter your password", t.dim)
     } else {
         ("Enter your password to unlock", t.dim)
     };
+
+    // a fingerprint in front of the line while the reader is listening
+    let status_line = Row::new(children![
+        icon(if reader { "\u{f0237}" } else { "" }, 14.0, if fingerprint == Fingerprint::NoMatch { t.red } else { t.accent }),
+        label(status, 12.5, status_color),
+    ])
+    .gap(8.0)
+    .align(Center);
 
     let wallpaper = Wallpaper::read().shown.clone();
 
@@ -74,7 +93,7 @@ pub fn view(_: &Monitor) -> LayerWindow {
         bold(user, 17.0, t.fg),
         Rectangle::new().width(1.0).height(6.0),
         field,
-        label(status, 12.5, status_color),
+        status_line,
     ])
     .gap(12.0)
     .align(Center);

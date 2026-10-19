@@ -43,6 +43,9 @@ fn main() {
     // starts listening for lock requests and suspend
     drop(logind::Logind::read());
 
+    // the lock screen also unlocks with an enrolled fingerprint (fprintd), next to the password
+    amane::Lock::use_fingerprint();
+
     let (path, shown) = {
         let wallpaper = wallpaper::Wallpaper::read();
 

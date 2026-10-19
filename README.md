@@ -23,6 +23,7 @@ https://github.com/user-attachments/assets/929118ca-c290-4210-9a0a-33786f3f1806
   and adds `LayerWindow::solid`
 - Adwaita Sans, JetBrainsMono Nerd Font
 - ImageMagick, wl-clipboard, cliphist, `pactl` (PipeWire or PulseAudio), NetworkManager, BlueZ, curl, jq
+- optional: fprintd with an enrolled finger, to unlock the lock screen with a fingerprint
 
 ## Install
 
