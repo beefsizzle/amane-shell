@@ -350,13 +350,9 @@ pub fn catcher(monitor: &Monitor) -> LayerWindow {
         .space(Zone::Respect)
         .namespace("amane-catcher")
         .visible(visible)
-        .child(
-            Rectangle::new()
-                .width(Parent)
-                .height(Parent)
-                .fill(Color::TRANSPARENT)
-                .on_click(|_| close()),
-        )
+        // the compositor shows one stretched transparent pixel, so a fullscreen catcher costs no gpu memory
+        .solid(Color::TRANSPARENT)
+        .child(Rectangle::new().width(Parent).height(Parent).on_click(|_| close()))
 }
 
 /// what a panel's window is while it's closed. building the real panel would read the services behind it,

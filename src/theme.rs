@@ -28,9 +28,9 @@ pub struct Theme {
 impl Theme {
     /*
      * what's on a panel at `amount` of its opacity, for a panel fading in. done on the colours rather than with
-     * `Rectangle::opacity`: Amane draws anything with an opacity below 1 through its vector renderer, which costs a
-     * few hundred MiB of GPU memory, while plain colours stay on the cheap path. pictures (icons, thumbnails) have no
-     * colour to fade, so they appear at once.
+     * `Rectangle::opacity`: Amane draws anything with an opacity below 1 on a texture of its own the size of the
+     * window and lays that over the rest, while plain colours are drawn straight in. pictures (icons, thumbnails)
+     * have no colour to fade, so they appear at once.
      *
      * the panel's own background (and the bar's glass) stays as it is: niri's blur shows the wallpaper behind it
      * (`xray`), not the window below, so a background that starts out clear flashes the wallpaper over that window

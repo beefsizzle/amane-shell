@@ -14,13 +14,18 @@ https://github.com/user-attachments/assets/252d8697-0cef-41c0-9103-a4b476d3f363
 
 ## Requirements
 
-- niri, the Amane CLI (`amane`)
+- niri
+- the Amane CLI from [this fork](https://github.com/beefsizzle/amane), which frees the GPU memory of hidden windows
+  and adds `LayerWindow::solid`
 - Adwaita Sans, JetBrainsMono Nerd Font
 - ImageMagick, wl-clipboard, cliphist, `pactl` (PipeWire or PulseAudio), NetworkManager, BlueZ, curl, jq
 
 ## Install
 
 ```sh
+git clone https://github.com/beefsizzle/amane
+cd amane && ./install.sh && cd ..
+
 git clone https://github.com/beefsizzle/amane-shell
 amane target amane-shell
 amane compile

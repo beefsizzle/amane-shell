@@ -406,9 +406,18 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
             None => tile.fill(t.surface_hi),
         };
 
-        let tile = tile
-            .opacity(if offset == 0 { 1.0 } else { 0.62 + 0.38 * hot })
-            .cursor(amane::Pointer);
+        // the side tiles are dimmed by a veil of the panel's colour rather than with `Rectangle::opacity`, which Amane
+        // draws on a window-sized texture of its own. the panel's colour at 38% over the picture looks about the same
+        // as the picture at 62% over the panel
+        let veil = if offset == 0 { 0.0 } else { 0.38 * (1.0 - hot) };
+
+        let tile = if veil > 0.0 {
+            tile.child(Rectangle::new().width(Parent).height(Parent).fill(alpha(t.panel, veil)))
+        } else {
+            tile
+        };
+
+        let tile = tile.cursor(amane::Pointer);
 
         let border = if offset == 0 { t.accent } else { alpha(t.fg, 0.0) };
 
