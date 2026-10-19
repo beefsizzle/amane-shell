@@ -1,10 +1,13 @@
 use std::time::Duration;
 
 use amane::{
-    Color, Full, Horizontal, Layer, LayerWindow, Margin, Monitor, Parent, Rectangle, Service, Vertical, Zone,
+    Animation, Color, Full, Horizontal, Layer, LayerWindow, Margin, Monitor, Parent, Rectangle, Service, Vertical, Zone,
 };
 
-use crate::theme::Theme;
+use crate::theme::{Theme, theme};
+
+// how long a panel takes to fade in. closing is instant: niri's blur behind a window that fades out smears
+const FADE: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Which {
@@ -28,11 +31,18 @@ pub struct Panels {
     pub monitor: String,     // the monitor they open on, empty for all of them
     pub armed: Option<&'static str>, // power action waiting for a second click
     generation: u64,                 // counts every change, so a late answer can tell it's out of date
+    fades: [Animation; COUNT],       // how far each open panel has faded in, 0 to 1
 }
 
 impl Service for Panels {
     fn new() -> Self {
-        Self { open: [false; COUNT], monitor: String::new(), armed: None, generation: 0 }
+        Self {
+            open: [false; COUNT],
+            monitor: String::new(),
+            armed: None,
+            generation: 0,
+            fades: std::array::from_fn(|_| Animation::new(0.0).duration(FADE)),
+        }
     }
 
     fn interval() -> Duration {
@@ -49,6 +59,23 @@ pub fn shown(which: Which, monitor: &Monitor) -> bool {
     let panels = Panels::read();
 
     panels.open[which as usize] && (panels.monitor.is_empty() || panels.monitor == monitor.name)
+}
+
+/// the colours to draw an open panel with, faded while it's just opening. None when it isn't open on this monitor
+pub fn look(which: Which, monitor: &Monitor) -> Option<Theme> {
+    let fade = {
+        let panels = Panels::read();
+
+        let here = panels.monitor.is_empty() || panels.monitor == monitor.name;
+
+        if !(panels.open[which as usize] && here) {
+            return None;
+        }
+
+        panels.fades[which as usize].value()
+    };
+
+    Some(theme().faded(fade))
 }
 
 // the first monitor a bar was built for, the answer when the compositor can't say which one has focus
@@ -114,6 +141,19 @@ fn update_since(since: Option<u64>, monitor: Option<&str>, edit: impl FnOnce(&mu
     panels.armed = None;
 
     let after = panels.open;
+
+    for index in 0..COUNT {
+        if before[index] == after[index] {
+            continue;
+        }
+
+        // a panel that opens fades in from nothing, one that closes is gone at once
+        panels.fades[index] = Animation::new(0.0).duration(FADE);
+
+        if after[index] {
+            panels.fades[index].to(1.0);
+        }
+    }
 
     drop(panels);
 
@@ -262,12 +302,12 @@ pub const GAP: i32 = 8;
 pub const RADIUS: f32 = 0.0;
 
 /// the empty window every popup panel is built on, anchored under the bar
-pub fn window(which: Which, monitor: &Monitor, width: f32, height: f32, side: Horizontal) -> LayerWindow {
-    window_at(which, monitor, width, height, side, GAP)
+pub fn window(width: f32, height: f32, side: Horizontal) -> LayerWindow {
+    window_at(width, height, side, GAP)
 }
 
 /// the same, with its own gap to the screen edge (dropdowns line up under their bar chip)
-pub fn window_at(which: Which, monitor: &Monitor, width: f32, height: f32, side: Horizontal, edge: i32) -> LayerWindow {
+pub fn window_at(width: f32, height: f32, side: Horizontal, edge: i32) -> LayerWindow {
     let (left, right) = match side {
         Horizontal::Left => (edge, 0),
         Horizontal::Right => (0, edge),
@@ -283,7 +323,6 @@ pub fn window_at(which: Which, monitor: &Monitor, width: f32, height: f32, side:
         .layer(Layer::Overlay)
         .space(Zone::Respect)
         .namespace("amane-panel")
-        .visible(shown(which, monitor))
 }
 
 /// the bordered body of a panel

@@ -7,7 +7,7 @@ use amane::{
 };
 
 use crate::panels::{self, GAP, Which};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::tray::TrayItem;
 use crate::ui::{bold, hover, icon, label, set_hover};
 
@@ -263,11 +263,9 @@ fn window(height: f32, margin: Margin) -> LayerWindow {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::TrayMenu, monitor) {
+    let Some(t) = panels::look(Which::TrayMenu, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let menu = TrayMenu::read();
 
     // right edge of the popup lines up with the right edge of the tray

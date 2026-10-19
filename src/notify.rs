@@ -301,11 +301,9 @@ fn unescape(text: &str) -> String {
 const CENTER_WIDTH: f32 = 380.0;
 
 pub fn center(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Notifications, monitor) {
+    let Some(t) = panels::look(Which::Notifications, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let notifications = Notifications::read();
     let notify = Notify::read();
 
@@ -361,7 +359,7 @@ pub fn center(monitor: &Monitor) -> LayerWindow {
 
     let height = 28.0 + 30.0 + 12.0 + list_height;
 
-    panels::window(Which::Notifications, monitor, CENTER_WIDTH, height, Horizontal::Right)
+    panels::window(CENTER_WIDTH, height, Horizontal::Right)
         .child(panels::body(&t).padding(14.0).child(Column::new(vec![Box::new(header), list]).gap(12.0)))
 }
 

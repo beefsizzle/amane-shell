@@ -1,7 +1,7 @@
 use amane::{Center, Column, Horizontal, Key, Keyboard, LayerWindow, Lock, Monitor, Parent, Rectangle, Row, Start, Widget};
 
 use crate::panels::{self, Which};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::ui::{hover, icon, label, set_hover};
 
 /*
@@ -113,17 +113,15 @@ fn row(t: &Theme, entry: &Entry) -> Rectangle {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Power, monitor) {
+    let Some(t) = panels::look(Which::Power, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
 
     let rows: Vec<Box<dyn Widget>> = ENTRIES.iter().map(|entry| Box::new(row(&t, entry)) as Box<dyn Widget>).collect();
 
     let height = 28.0 + ROW * ENTRIES.len() as f32 + 2.0 * (ENTRIES.len() as f32 - 1.0) + 8.0 + 16.0;
 
-    panels::window_at(Which::Power, monitor, WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Power))
+    panels::window_at(WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Power))
         .keyboard(Keyboard::Exclusive)
         .on_key(on_key)
         .child(

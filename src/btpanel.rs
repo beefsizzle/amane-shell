@@ -3,7 +3,7 @@ use amane::{Center, Column, Horizontal, LayerWindow, Monitor, Parent, Rectangle,
 use crate::btstate::{self, BtState, Device};
 
 use crate::panels::{self, Which};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::ui::{bold, chip, hover, icon, label, round_button, set_hover};
 
 /*
@@ -101,11 +101,9 @@ fn row(t: &Theme, index: usize, device: &Device) -> Rectangle {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Bluetooth, monitor) {
+    let Some(t) = panels::look(Which::Bluetooth, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let bluetooth = BtState::read();
 
     let header = Row::new(children![
@@ -158,6 +156,6 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     let height = 28.0 + 30.0 + 14.0 + list_height;
 
-    panels::window_at(Which::Bluetooth, monitor, WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Bluetooth))
+    panels::window_at(WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Bluetooth))
         .child(panels::body(&t).padding(14.0).child(Column::new(vec![Box::new(header) as Box<dyn Widget>, body]).gap(14.0)))
 }

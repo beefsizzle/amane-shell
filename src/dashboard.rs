@@ -6,7 +6,7 @@ use crate::btstate::BtState;
 use crate::notify::Notify;
 use crate::panels::{self, Panels, Which};
 use crate::sys::{Sys, format_rate};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::ui::{bold, hover, icon, label, meter, round_button, set_hover, slider};
 
 const WIDTH: f32 = 372.0;
@@ -15,11 +15,9 @@ const TILE: f32 = 108.0;
 const TILE_HEIGHT: f32 = 70.0;
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Dashboard, monitor) {
+    let Some(t) = panels::look(Which::Dashboard, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     // header 40, tiles 2 rows, volume 30, system 125, and the gaps between them
     let height = 28.0 + 40.0 + 14.0 + (TILE_HEIGHT * 2.0 + 10.0) + 14.0 + 30.0 + 14.0 + 125.0;
 
@@ -30,7 +28,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
         Box::new(system(&t)),
     ];
 
-    panels::window(Which::Dashboard, monitor, WIDTH, height, Horizontal::Left).child(
+    panels::window(WIDTH, height, Horizontal::Left).child(
         panels::body(&t).padding(14.0).child(Column::new(sections).gap(14.0)),
     )
 }

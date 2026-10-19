@@ -127,8 +127,9 @@ pub fn slider(t: &Theme, width: f32, value: f32, changed: fn(f32)) -> Rectangle 
         .width(14.0)
         .height(14.0)
         .radius(0.0)
-        .fill(Color::WHITE)
-        .border(1.0, alpha(Color::BLACK, 0.45))
+        // white, but fading with the panel it's in
+        .fill(Color::rgba(255, 255, 255, t.fg.alpha()))
+        .border(1.0, alpha(Color::BLACK, 0.45 * f32::from(t.fg.alpha()) / 255.0))
         .translate((width - 14.0) * value, 2.0);
 
     Rectangle::new()

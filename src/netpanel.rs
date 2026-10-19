@@ -3,7 +3,7 @@ use amane::{Center, Color, Column, Horizontal, LayerWindow, Link, Monitor, Netwo
 use crate::netinfo::Netinfo;
 use crate::panels::{self, Which};
 use crate::sys::{Sys, format_rate};
-use crate::theme::{Theme, alpha, theme};
+use crate::theme::{Theme, alpha};
 use crate::ui::{bold, icon, label, section};
 
 const WIDTH: f32 = 372.0;
@@ -80,11 +80,9 @@ fn detail(t: &Theme, name: &str, value: String) -> Box<dyn Widget> {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Network, monitor) {
+    let Some(t) = panels::look(Which::Network, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let network = Network::read();
     let info = Netinfo::read();
     let sys = Sys::read();
@@ -215,6 +213,6 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
         height += 14.0 + 14.0 + 14.0 + count * 30.0 + (count - 1.0) * 2.0;
     }
 
-    panels::window_at(Which::Network, monitor, WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Network))
+    panels::window_at(WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Network))
         .child(panels::body(&t).padding(14.0).child(Column::new(sections).gap(14.0)))
 }

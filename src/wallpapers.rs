@@ -5,7 +5,7 @@ use amane::{
 };
 
 use crate::panels::{self, Which};
-use crate::theme::{alpha, theme};
+use crate::theme::{alpha};
 use crate::ui::{Wheel, bold, hover, icon, label, set_hover};
 use crate::wallpaper::Wallpaper;
 
@@ -353,11 +353,9 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     // reading the service above is what starts its thumbnail work at launch, so it stays. but a closed picker shouldn't
     // build seven tiles (and look at seven files) on every change
-    if !panels::shown(Which::Wallpapers, monitor) {
+    let Some(t) = panels::look(Which::Wallpapers, monitor) else {
         return panels::hidden("amane-dock");
-    }
-
-    let t = theme();
+    };
     let current = Wallpaper::read().path.clone();
 
     let window = LayerWindow::new()

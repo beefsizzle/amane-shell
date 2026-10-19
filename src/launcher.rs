@@ -9,7 +9,7 @@ use amane::{
 };
 
 use crate::panels::{self, Which};
-use crate::theme::{alpha, mix, theme};
+use crate::theme::{alpha, mix};
 use crate::ui::{Wheel, bold, icon, label};
 
 /*
@@ -358,11 +358,9 @@ fn cell(t: &crate::theme::Theme, index: usize, app: &DesktopApp, chosen: bool) -
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Launcher, monitor) {
+    let Some(t) = panels::look(Which::Launcher, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
 
     let (selected, grid, grid_offset, empty_query) = {
         let launcher = Launcher::read();

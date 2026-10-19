@@ -2,7 +2,7 @@ use amane::{Center, Column, Horizontal, LayerWindow, Monitor, Padding, Parent, R
 
 use crate::clock::Clock;
 use crate::panels::{self, Which};
-use crate::theme::{Theme, alpha, theme};
+use crate::theme::{Theme, alpha};
 use crate::ui::{bold, icon, label, section};
 use crate::weather::{Weather, degrees, describe};
 
@@ -10,11 +10,9 @@ const WIDTH: f32 = 372.0;
 const INNER: f32 = WIDTH - 28.0;
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Calendar, monitor) {
+    let Some(t) = panels::look(Which::Calendar, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let weather = Weather::read();
     let clock = Clock::read();
 
@@ -47,7 +45,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     sections.push(Box::new(month(&t, &clock, rows)));
 
-    panels::window(Which::Calendar, monitor, WIDTH, height, Horizontal::Middle)
+    panels::window(WIDTH, height, Horizontal::Middle)
         .child(panels::body(&t).padding(14.0).child(Column::new(sections).gap(14.0)))
 }
 

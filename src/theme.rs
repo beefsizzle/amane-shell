@@ -25,6 +25,41 @@ pub struct Theme {
     pub yellow: Color,
 }
 
+impl Theme {
+    /*
+     * what's on a panel at `amount` of its opacity, for a panel fading in. done on the colours rather than with
+     * `Rectangle::opacity`: Amane draws anything with an opacity below 1 through its vector renderer, which costs a
+     * few hundred MiB of GPU memory, while plain colours stay on the cheap path. pictures (icons, thumbnails) have no
+     * colour to fade, so they appear at once.
+     *
+     * the panel's own background (and the bar's glass) stays as it is: niri's blur shows the wallpaper behind it
+     * (`xray`), not the window below, so a background that starts out clear flashes the wallpaper over that window
+     */
+    pub fn faded(self, amount: f32) -> Theme {
+        if amount >= 1.0 {
+            return self;
+        }
+
+        let fade = |color: Color| Color::rgba(color.red(), color.green(), color.blue(), (f32::from(color.alpha()) * amount.max(0.0)).round() as u8);
+
+        Theme {
+            glass: self.glass,
+            panel: self.panel,
+            surface: fade(self.surface),
+            surface_hi: fade(self.surface_hi),
+            border: fade(self.border),
+            fg: fade(self.fg),
+            dim: fade(self.dim),
+            faint: fade(self.faint),
+            accent: fade(self.accent),
+            accent_soft: fade(self.accent_soft),
+            on_accent: fade(self.on_accent),
+            red: fade(self.red),
+            yellow: fade(self.yellow),
+        }
+    }
+}
+
 pub fn alpha(color: Color, amount: f32) -> Color {
     Color::rgba(color.red(), color.green(), color.blue(), (amount.clamp(0.0, 1.0) * 255.0) as u8)
 }
@@ -210,6 +245,20 @@ mod tests {
             assert!(contrast(theme.on_accent, theme.accent) >= 4.5, "on-accent contrast {}", contrast(theme.on_accent, theme.accent));
             assert!(contrast(theme.red, panel) >= 4.5, "red contrast {}", contrast(theme.red, panel));
         }
+    }
+
+    #[test]
+    fn fading_scales_every_colour() {
+        let theme = derive(WALLPAPERS[0].0, WALLPAPERS[0].1, WALLPAPERS[0].2);
+        let half = theme.faded(0.5);
+
+        assert_eq!(half.fg.alpha(), 128);
+        assert_eq!(half.surface.alpha(), (f32::from(theme.surface.alpha()) * 0.5).round() as u8);
+
+        // the background stays, so the blur behind it never shows through clear
+        assert_eq!(half.panel.alpha(), theme.panel.alpha());
+        assert_eq!(theme.faded(0.0).accent.alpha(), 0);
+        assert_eq!(theme.faded(1.0).border.alpha(), theme.border.alpha());
     }
 
     #[test]

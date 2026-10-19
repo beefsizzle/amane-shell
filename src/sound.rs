@@ -4,7 +4,7 @@ use std::time::Duration;
 use amane::{Audio, Button, Center, Column, Horizontal, LayerWindow, Monitor, Rectangle, Row, Service, Start, Widget, children};
 
 use crate::panels::{self, Which};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::ui::{bold, hover, icon, label, round_button, section, set_hover, slider};
 
 /*
@@ -184,11 +184,9 @@ fn block(t: &Theme, block: &Block) -> (Column, f32) {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Audio, monitor) {
+    let Some(t) = panels::look(Which::Audio, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
     let audio = Audio::read();
     let devices = Devices::read();
 
@@ -230,7 +228,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     let divider = Rectangle::new().width(INNER).height(1.0).fill(t.border);
 
-    panels::window_at(Which::Audio, monitor, WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Audio))
+    panels::window_at(WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Audio))
         .child(
             panels::body(&t).padding(14.0).child(
                 Column::new(vec![Box::new(bold("Sound", 15.0, t.fg)) as Box<dyn Widget>, Box::new(output), Box::new(divider), Box::new(input)]).gap(14.0),

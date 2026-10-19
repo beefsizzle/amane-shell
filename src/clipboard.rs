@@ -7,7 +7,7 @@ use amane::{Center, Column, Horizontal, Image, Key, Keyboard, LayerWindow, Monit
 
 use crate::cache;
 use crate::panels::{self, Which};
-use crate::theme::{Theme, alpha, mix, theme};
+use crate::theme::{Theme, alpha, mix};
 use crate::ui::{Wheel, chip, hover, icon, label, round_button, set_hover};
 
 /*
@@ -389,11 +389,9 @@ fn row(t: &Theme, index: usize, entry: &Entry, chosen: bool) -> Rectangle {
 }
 
 pub fn view(monitor: &Monitor) -> LayerWindow {
-    if !panels::shown(Which::Clipboard, monitor) {
+    let Some(t) = panels::look(Which::Clipboard, monitor) else {
         return panels::hidden("amane-panel");
-    }
-
-    let t = theme();
+    };
 
     let (selected, offset, empty_history, available, loaded) = {
         let clipboard = Clipboard::read();
@@ -483,7 +481,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     let total = found.len();
 
-    panels::window_at(Which::Clipboard, monitor, WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Clipboard))
+    panels::window_at(WIDTH, height, Horizontal::Right, crate::bar::right_edge(crate::bar::Slot::Clipboard))
         .keyboard(Keyboard::Exclusive)
         .on_key(on_key)
         .child(
