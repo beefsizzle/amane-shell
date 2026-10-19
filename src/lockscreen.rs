@@ -1,5 +1,5 @@
 use amane::{
-    Center, Color, Column, Fingerprint, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Row, Service, Stack, TextInput,
+    Center, Color, Column, Fingerprint, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Service, Stack, TextInput,
     children,
 };
 
@@ -36,13 +36,13 @@ pub fn view(_: &Monitor) -> LayerWindow {
         ("Enter your password to unlock", t.dim)
     };
 
-    // a fingerprint in front of the line while the reader is listening
-    let status_line = Row::new(children![
-        icon(if reader { "\u{f0237}" } else { "" }, 14.0, if fingerprint == Fingerprint::NoMatch { t.red } else { t.accent }),
-        label(status, 12.5, status_color),
-    ])
-    .gap(8.0)
-    .align(Center);
+    // a big fingerprint under the line while the reader is listening, red when the finger wasn't recognised.
+    // its room is kept when there's no reader too, so the rest doesn't move when it comes and goes
+    let reader_mark = Rectangle::new().width(64.0).height(64.0).align_child(Center, Center).child(icon(
+        if reader { "\u{f0237}" } else { "" },
+        52.0,
+        if fingerprint == Fingerprint::NoMatch { t.red } else { t.accent },
+    ));
 
     let wallpaper = Wallpaper::read().shown.clone();
 
@@ -93,7 +93,8 @@ pub fn view(_: &Monitor) -> LayerWindow {
         bold(user, 17.0, t.fg),
         Rectangle::new().width(1.0).height(6.0),
         field,
-        status_line,
+        label(status, 12.5, status_color),
+        reader_mark,
     ])
     .gap(12.0)
     .align(Center);
