@@ -74,13 +74,25 @@ impl Service for Wallpaper {
  * decoding takes a moment, so this waits on a thread of its own
  */
 pub fn display_ready(path: &str, display: &str) {
+    /*
+     * only for the chosen wallpaper: asking Amane whether an image is loaded also decodes it, and a decoded image
+     * that is never drawn is never let go. the background conversions call this for every wallpaper they make
+     */
+    if Wallpaper::read().path != path {
+        return;
+    }
+
     let (path, display) = (path.to_string(), display.to_string());
 
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
 
-        // asking also starts the decode
+        // asking also starts the decode. a wallpaper picked meanwhile takes over, this one stops waiting
         while !Image::loaded(&display) && started.elapsed() < DECODE_WITHIN {
+            if Wallpaper::read().path != path {
+                return;
+            }
+
             std::thread::sleep(Duration::from_millis(16));
         }
 

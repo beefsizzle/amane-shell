@@ -7,22 +7,38 @@ pub const ICON_FONT: &str = "JetBrainsMono Nerd Font";
 pub const CHIP_RADIUS: f32 = 0.0;
 pub const RADIUS_SMALL: f32 = 0.0;
 
-// every color the shell uses, derived from the wallpaper through `Palette`
-#[derive(Clone, Copy)]
-pub struct Theme {
-    pub glass: Color,       // translucent base behind the blur
-    pub panel: Color,       // popup background, a little more opaque than the bar
-    pub surface: Color,     // chips and cards on top of a panel
-    pub surface_hi: Color,  // the same, hovered
-    pub border: Color,      // hairlines
-    pub fg: Color,
-    pub dim: Color,
-    pub faint: Color,
-    pub accent: Color,
-    pub accent_soft: Color, // accent tint for active chips
-    pub on_accent: Color,
-    pub red: Color,
-    pub yellow: Color,
+/*
+ * every color the shell uses, derived from the wallpaper through `Palette`. they're listed in two groups, so that
+ * `faded` can't miss a color added later:
+ *  - background: `glass`, the translucent base behind the bar's blur, and `panel`, a popup's background, a little
+ *    more opaque. they stay solid while a panel fades in
+ *  - content, everything drawn on them, which fades: `surface` (chips and cards) and `surface_hi` (the same,
+ *    hovered), `border` for hairlines, the text colors `fg`, `dim` and `faint`, `accent` with `accent_soft` (a tint
+ *    for active chips) and `on_accent` (text on an accent fill), and `red` and `yellow` for warnings
+ */
+macro_rules! theme {
+    (background { $($solid:ident),* $(,)? } content { $($fading:ident),* $(,)? }) => {
+        #[derive(Clone, Copy)]
+        pub struct Theme {
+            $(pub $solid: Color,)*
+            $(pub $fading: Color,)*
+        }
+
+        impl Theme {
+            // the content colors through `fade`, the background ones as they are
+            fn map_content(self, fade: impl Fn(Color) -> Color) -> Theme {
+                Theme {
+                    $($solid: self.$solid,)*
+                    $($fading: fade(self.$fading),)*
+                }
+            }
+        }
+    };
+}
+
+theme! {
+    background { glass, panel }
+    content { surface, surface_hi, border, fg, dim, faint, accent, accent_soft, on_accent, red, yellow }
 }
 
 impl Theme {
@@ -40,23 +56,7 @@ impl Theme {
             return self;
         }
 
-        let fade = |color: Color| Color::rgba(color.red(), color.green(), color.blue(), (f32::from(color.alpha()) * amount.max(0.0)).round() as u8);
-
-        Theme {
-            glass: self.glass,
-            panel: self.panel,
-            surface: fade(self.surface),
-            surface_hi: fade(self.surface_hi),
-            border: fade(self.border),
-            fg: fade(self.fg),
-            dim: fade(self.dim),
-            faint: fade(self.faint),
-            accent: fade(self.accent),
-            accent_soft: fade(self.accent_soft),
-            on_accent: fade(self.on_accent),
-            red: fade(self.red),
-            yellow: fade(self.yellow),
-        }
+        self.map_content(|color| Color::rgba(color.red(), color.green(), color.blue(), (f32::from(color.alpha()) * amount.max(0.0)).round() as u8))
     }
 }
 

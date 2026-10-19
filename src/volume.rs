@@ -23,6 +23,7 @@ const NOTCH: i32 = 5;
 #[derive(Default)]
 pub struct Pending {
     set: [Option<(u8, Instant)>; 2], // by `Level`: the percent just set, and when
+    expiring: [bool; 2],             // a thread will clear it once it's old, see `expire`
 }
 
 impl Service for Pending {
@@ -39,15 +40,25 @@ impl Level {
     /// what to show: the level just set while it's fresh, otherwise `actual`, what the sound server says. the caller
     /// passes that in because views already hold the Audio service, and reading it twice on one thread can deadlock
     pub fn shown(self, actual: u8) -> u8 {
-        let pending = Pending::read().set[self as usize];
-
-        pending.filter(|(_, at)| at.elapsed() < CONFIRM_WITHIN).map_or(actual, |(percent, _)| percent)
+        Pending::read().set[self as usize].map_or(actual, |(percent, _)| percent)
     }
 
     pub fn set(self, percent: u8) {
         let percent = percent.min(100);
 
-        Pending::write().set[self as usize] = Some((percent, Instant::now()));
+        {
+            let mut pending = Pending::write();
+
+            pending.set[self as usize] = Some((percent, Instant::now()));
+
+            if !pending.expiring[self as usize] {
+                pending.expiring[self as usize] = true;
+
+                let level = self;
+
+                std::thread::spawn(move || expire(level));
+            }
+        }
 
         match self {
             Level::Output => Audio::set_volume(percent),
@@ -73,6 +84,38 @@ impl Level {
         let next = i32::from(self.shown(actual)) + notches * NOTCH;
 
         self.set(next.clamp(0, 100) as u8);
+    }
+}
+
+/*
+ * clears a level once nothing has set it for CONFIRM_WITHIN, so the views redraw with what the sound server says.
+ * without this, a level the sound server never took (one it clamps, or refuses) would stay on screen until something
+ * else redrew. one thread per level, however many drag events there are
+ */
+fn expire(level: Level) {
+    loop {
+        let left = match Pending::read().set[level as usize] {
+            Some((_, at)) => CONFIRM_WITHIN.saturating_sub(at.elapsed()),
+            None => Duration::ZERO,
+        };
+
+        if !left.is_zero() {
+            std::thread::sleep(left);
+
+            continue;
+        }
+
+        let mut pending = Pending::write();
+
+        // set again just now: keep waiting
+        if pending.set[level as usize].is_some_and(|(_, at)| at.elapsed() < CONFIRM_WITHIN) {
+            continue;
+        }
+
+        pending.set[level as usize] = None;
+        pending.expiring[level as usize] = false;
+
+        return;
     }
 }
 
