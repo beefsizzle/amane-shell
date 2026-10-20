@@ -36,6 +36,9 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
 // ---------------------------------------------------------------- header
 
+// what's left of the header's width for the text: the avatar, five 30px buttons and the six 6px gaps between them all
+const TEXT_WIDTH: f32 = INNER - 40.0 - 5.0 * 30.0 - 6.0 * 6.0;
+
 fn header(t: &Theme) -> Row {
     let user = std::env::var("USER").unwrap_or_else(|_| String::from("user"));
     let initial = user.chars().next().unwrap_or('?').to_uppercase().to_string();
@@ -45,10 +48,16 @@ fn header(t: &Theme) -> Row {
     let armed = Panels::read().armed;
     let uptime = Sys::read().uptime.clone();
 
-    let subtitle = match armed {
-        Some(action) => bold(format!("Click again to {action}"), 11.0, t.red),
-        None => label(format!("up {uptime}"), 11.5, t.dim),
+    // the name and uptime, or while a power button waits for its second click, what that click will do. the text
+    // has a box of its own, as wide as the room left of the buttons, so a longer line can't push them aside
+    let (top, bottom) = match armed {
+        Some(action) => (bold("Click again", 14.0, t.red), label(format!("to {action}"), 11.5, t.red)),
+        None => (bold(user, 14.0, t.fg), label(format!("up {uptime}"), 11.5, t.dim)),
     };
+
+    let line = |text: amane::Text, height: f32| Rectangle::new().width(TEXT_WIDTH).height(height).child(text.elide());
+
+    let text = Column::new(children![line(top, 18.0), line(bottom, 15.0)]).gap(2.0);
 
     let avatar = Rectangle::new()
         .width(40.0)
@@ -61,8 +70,7 @@ fn header(t: &Theme) -> Row {
 
     Row::new(children![
         avatar,
-        Column::new(children![bold(user, 14.0, t.fg), subtitle]).gap(2.0),
-        Rectangle::new().width(Parent).height(1.0),
+        text,
         round_button("lock", t, "\u{f023}", t.dim, |_| {
             panels::close();
 
