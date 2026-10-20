@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use amane::{
-    Apps, Center, Column, DesktopApp, Horizontal, Image, Key, Keyboard, Layer, LayerWindow, Margin, Monitor, Parent, Rectangle, Row, Service, Start,
+    Apps, Center, Column, DesktopApp, Horizontal, Key, Keyboard, Layer, LayerWindow, Margin, Monitor, Parent, Rectangle, Row, Service, Start,
     TextInput, Vertical, Widget, Zone, children,
 };
 
@@ -323,7 +323,7 @@ fn cell(t: &crate::theme::Theme, index: usize, app: &DesktopApp, chosen: bool) -
         let base = Rectangle::new().width(44.0).height(44.0);
 
         match app.icon_path() {
-            Some(path) => base.fill(Image::contain(path)),
+            Some(path) => base.fill(crate::ui::app_icon(path)),
             // an app without an icon gets its first letter
             None => base
                 .fill(t.surface_hi)
@@ -505,7 +505,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
                 let base = Rectangle::new().width(30.0).height(30.0);
 
                 match app.icon_path() {
-                    Some(path) => base.fill(Image::contain(path)),
+                    Some(path) => base.fill(crate::ui::app_icon(path)),
                     None => base,
                 }
             };

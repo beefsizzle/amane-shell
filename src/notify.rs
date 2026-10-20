@@ -150,7 +150,7 @@ fn avatar(t: &Theme, notification: &Notification) -> Rectangle {
         return base
             .fill(t.surface_hi)
             .padding(7.0)
-            .child(Rectangle::new().width(26.0).height(26.0).fill(Image::contain(path)));
+            .child(Rectangle::new().width(26.0).height(26.0).fill(crate::ui::app_icon(&path)));
     }
 
     let critical = notification.urgency() == Urgency::Critical;

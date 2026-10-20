@@ -114,7 +114,7 @@ fn distro_logo() -> Option<&'static str> {
 
 fn launcher(t: &Theme, name: &str) -> Rectangle {
     let logo = match distro_logo() {
-        Some(path) => Rectangle::new().width(18.0).height(18.0).fill(amane::Image::contain(path)),
+        Some(path) => Rectangle::new().width(18.0).height(18.0).fill(crate::ui::app_icon(path)),
         // a distro without one gets Tux
         None => Rectangle::new().width(18.0).height(18.0).align_child(Center, Center).child(icon("\u{f17c}", 14.0, t.fg)),
     };

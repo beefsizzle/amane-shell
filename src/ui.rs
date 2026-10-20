@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use amane::{
-    Animation, Button, Center, Color, Column, Point, Pointer, Rectangle, Service, Stack, Start, Text, Weight, Widget,
-    children,
+    Animation, Button, Center, Color, Column, Image, Point, Pointer, Rectangle, Service, Stack, Start, Text, Weight,
+    Widget, children,
 };
 
 use crate::theme::{CHIP_RADIUS, ICON_FONT, RADIUS_SMALL, TEXT_FONT, Theme, alpha, mix};
@@ -20,6 +20,21 @@ pub fn label(content: impl Into<String>, size: f32, color: Color) -> Text {
 
 pub fn bold(content: impl Into<String>, size: f32, color: Color) -> Text {
     label(content, size, color).weight(Weight::Bold)
+}
+
+// ---------------------------------------------------------------- pictures
+
+// the pixels app icons are decoded at: big enough for the largest place one is drawn (44px in the launcher grid) on
+// a monitor scaled up to 2x. one size everywhere, so an icon shown in several places is decoded once
+const ICON_PIXELS: u32 = 96;
+
+/*
+ * an app or theme icon, shrunk to ICON_PIXELS once it's decoded. icon files are often 256px or bigger, a quarter of
+ * a megabyte each once decoded, and the launcher shows dozens. Amane keeps small copies like these for good (they
+ * cost little), so only use it for icons from the installed themes, not for pictures that keep changing
+ */
+pub fn app_icon(path: impl AsRef<std::path::Path>) -> Image {
+    Image::contain(path.as_ref()).thumbnail(ICON_PIXELS, ICON_PIXELS)
 }
 
 // ---------------------------------------------------------------- hover

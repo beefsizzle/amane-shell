@@ -32,7 +32,27 @@ use amane::{App, Layer, LayerWindow, Palette, Parent, Rectangle, Zone, Image, Se
 
 use crate::theme::TEXT_FONT;
 
+// glibc's malloc tuning, see main
+#[cfg(target_env = "gnu")]
+unsafe extern "C" {
+    fn mallopt(param: std::ffi::c_int, value: std::ffi::c_int) -> std::ffi::c_int;
+}
+
+#[cfg(target_env = "gnu")]
+const M_ARENA_MAX: std::ffi::c_int = -8;
+
 fn main() {
+    /*
+     * glibc gives threads their own malloc arenas, up to eight per core, and each keeps the memory it once held. the
+     * shell runs dozens of mostly idle threads (services, D-Bus, decoding), so two arenas between them all is plenty,
+     * and keeps about 10 MB less resident
+     */
+    #[cfg(target_env = "gnu")]
+    // SAFETY: a plain glibc setting, made before any other thread exists
+    unsafe {
+        mallopt(M_ARENA_MAX, 2);
+    }
+
     // Amane would otherwise also set up OpenGL next to Vulkan, which loads Mesa's whole GL stack for nothing.
     // set before any other thread exists, and only when nobody chose a backend themselves
     if std::env::var_os("WGPU_BACKEND").is_none() {
