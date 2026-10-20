@@ -87,8 +87,16 @@ pub fn display_ready(path: &str, display: &str) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
 
-        // asking also starts the decode. a wallpaper picked meanwhile takes over, this one stops waiting
-        while !Image::loaded(&display) && started.elapsed() < DECODE_WITHIN {
+        /*
+         * the fade is drawn by the shell, and needs both pictures decoded: the new one, and the one on screen now,
+         * which the compositor has been drawing from its own copy. asking also starts the decode. a wallpaper picked
+         * meanwhile takes over, this one stops waiting
+         */
+        let old = Wallpaper::read().shown.clone();
+
+        let ready = |file: &str| file.is_empty() || Image::loaded(file);
+
+        while !(ready(&display) && ready(&old)) && started.elapsed() < DECODE_WITHIN {
             if Wallpaper::read().path != path {
                 return;
             }

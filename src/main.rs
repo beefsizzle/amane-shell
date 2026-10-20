@@ -165,8 +165,13 @@ fn main() {
         .run();
 }
 
-// no `.thumbnail()` here on purpose: Amane never evicts images loaded with it, so every wallpaper you tried would
-// stay in memory. the file is already a screen-sized copy (see wallpapers.rs), and a plain image is dropped when it stops being shown
+/*
+ * the wallpaper is drawn by the compositor (LayerWindow::picture): one buffer in shared memory for every monitor,
+ * and no gpu memory of the shell's own. that was about 170 MB of swapchains and textures for two monitors. only while
+ * a new wallpaper fades in does the window draw with the gpu, and it gives that back afterwards.
+ * no `.thumbnail()` here on purpose: Amane keeps small copies for good, and the file is already a screen-sized copy
+ * (see wallpapers.rs)
+ */
 fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
     let (shown, incoming, fade) = {
         let wallpaper = wallpaper::Wallpaper::read();
@@ -176,19 +181,23 @@ fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
 
     let base = Rectangle::new().width(Parent).height(Parent);
 
-    let mut picture = if shown.is_empty() { base.fill(amane::Color::BLACK) } else { base.fill(Image::cover(&shown)) };
-
-    // a new wallpaper fades in on top of the old one
-    if let Some(incoming) = &incoming {
-        picture = picture.child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade));
-    }
-
-    LayerWindow::new()
+    let window = LayerWindow::new()
         .width(amane::Full)
         .height(amane::Full)
         .layer(Layer::Background)
         .space(Zone::Ignore)
         .namespace("amane-wallpaper")
-        .visible(!shown.is_empty() || incoming.is_some())
-        .child(picture)
+        .visible(!shown.is_empty() || incoming.is_some());
+
+    match &incoming {
+        // a new wallpaper fades in on top of the old one, drawn by the gpu for as long as that takes
+        Some(incoming) => window.child(
+            base.fill(Image::cover(&shown))
+                .child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade)),
+        ),
+        // the compositor draws it. the child only shows while the file is first decoding, and must not name the
+        // picture itself, or the shell would decode its own copy again
+        None if !shown.is_empty() => window.picture(&shown).child(base.fill(amane::Color::BLACK)),
+        None => window.child(base.fill(amane::Color::BLACK)),
+    }
 }
