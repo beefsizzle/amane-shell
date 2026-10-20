@@ -10,7 +10,8 @@ power dropdowns. Colours follow the wallpaper.
 
 
 
-https://github.com/user-attachments/assets/929118ca-c290-4210-9a0a-33786f3f1806
+https://github.com/user-attachments/assets/a843d4c3-b076-4d88-abff-8120f4c5d30a
+
 
 
 
