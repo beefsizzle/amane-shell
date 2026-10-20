@@ -1,4 +1,4 @@
-# amane-shell
+# daru
 
 A desktop shell for [niri](https://github.com/YaLTeR/niri), built with [Amane](https://github.com/MystiaFin/amane). Bar, tray,
 dashboard, launcher, notifications, calendar and weather, wallpaper picker, and sound, Bluetooth, network, clipboard and
@@ -20,8 +20,9 @@ https://github.com/user-attachments/assets/a843d4c3-b076-4d88-abff-8120f4c5d30a
 ## Requirements
 
 - niri
-- the Amane CLI from [this fork](https://github.com/beefsizzle/amane), which frees the GPU memory of hidden windows
-  and adds `LayerWindow::solid`
+- the Amane CLI from [this fork](https://github.com/beefsizzle/amane), for fingerprint unlock, a compositor-drawn
+  wallpaper and lower GPU memory. With upstream Amane, use the [`upstream`](https://github.com/beefsizzle/daru/tree/upstream)
+  branch instead, which does without those
 - Adwaita Sans, JetBrainsMono Nerd Font
 - ImageMagick, wl-clipboard, cliphist, `pactl` (PipeWire or PulseAudio), NetworkManager, BlueZ, curl, jq
 - optional: fprintd with an enrolled finger, to unlock the lock screen with a fingerprint
@@ -32,8 +33,8 @@ https://github.com/user-attachments/assets/a843d4c3-b076-4d88-abff-8120f4c5d30a
 git clone https://github.com/beefsizzle/amane
 cd amane && ./install.sh && cd ..
 
-git clone https://github.com/beefsizzle/amane-shell
-amane target amane-shell
+git clone https://github.com/beefsizzle/daru
+amane target daru
 amane compile
 amane run
 ```
