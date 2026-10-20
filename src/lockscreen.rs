@@ -1,5 +1,5 @@
 use amane::{
-    Center, Color, Column, Fingerprint, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Service, Stack, TextInput,
+    Center, Color, Column, Image, LayerWindow, Lock, Monitor, Parent, Rectangle, Service, Stack, TextInput,
     children,
 };
 
@@ -9,7 +9,7 @@ use crate::ui::{bold, icon, label};
 use crate::wallpaper::Wallpaper;
 
 // the lock screen. the password is checked through PAM's `login` service, like a tty login, and an enrolled
-// fingerprint unlocks it too while the password field stays usable (see `Lock::use_fingerprint` in main.rs)
+// (fingerprint unlock needs the Amane fork, see the main branch)
 
 pub fn view(_: &Monitor) -> LayerWindow {
     let t = theme();
@@ -19,30 +19,13 @@ pub fn view(_: &Monitor) -> LayerWindow {
     let user = std::env::var("USER").unwrap_or_else(|_| String::from("user"));
     let initial = user.chars().next().unwrap_or('?').to_uppercase().to_string();
 
-    let fingerprint = lock.fingerprint();
-    let reader = matches!(fingerprint, Fingerprint::Listening | Fingerprint::Retry | Fingerprint::NoMatch);
-
     let (status, status_color) = if lock.checking() {
         ("Checking\u{2026}", t.dim)
     } else if lock.failed() {
         ("Wrong password, try again", t.red)
-    } else if fingerprint == Fingerprint::NoMatch {
-        ("Fingerprint not recognised, try again", t.red)
-    } else if fingerprint == Fingerprint::Retry {
-        ("Couldn't read that, place your finger again", t.dim)
-    } else if reader {
-        ("Touch the reader or enter your password", t.dim)
     } else {
         ("Enter your password to unlock", t.dim)
     };
-
-    // a big fingerprint under the line while the reader is listening, red when the finger wasn't recognised.
-    // its room is kept when there's no reader too, so the rest doesn't move when it comes and goes
-    let reader_mark = Rectangle::new().width(64.0).height(64.0).align_child(Center, Center).child(icon(
-        if reader { "\u{f0237}" } else { "" },
-        52.0,
-        if fingerprint == Fingerprint::NoMatch { t.red } else { t.accent },
-    ));
 
     let wallpaper = Wallpaper::read().shown.clone();
 
@@ -94,7 +77,6 @@ pub fn view(_: &Monitor) -> LayerWindow {
         Rectangle::new().width(1.0).height(6.0),
         field,
         label(status, 12.5, status_color),
-        reader_mark,
     ])
     .gap(12.0)
     .align(Center);

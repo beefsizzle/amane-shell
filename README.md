@@ -20,20 +20,19 @@ https://github.com/user-attachments/assets/a843d4c3-b076-4d88-abff-8120f4c5d30a
 ## Requirements
 
 - niri
-- the Amane CLI from [this fork](https://github.com/beefsizzle/amane), for fingerprint unlock, a compositor-drawn
-  wallpaper and lower GPU memory. With upstream Amane, use the [`upstream`](https://github.com/beefsizzle/daru/tree/upstream)
-  branch instead, which does without those
+- the [Amane](https://github.com/MystiaFin/amane) CLI. This `upstream` branch builds with upstream Amane, and does without
+  what the [`main`](https://github.com/beefsizzle/daru) branch gets from [my fork](https://github.com/beefsizzle/amane):
+  fingerprint unlock, a wallpaper drawn by the compositor, and lower GPU memory
 - Adwaita Sans, JetBrainsMono Nerd Font
 - ImageMagick, wl-clipboard, cliphist, `pactl` (PipeWire or PulseAudio), NetworkManager, BlueZ, curl, jq
-- optional: fprintd with an enrolled finger, to unlock the lock screen with a fingerprint
 
 ## Install
 
 ```sh
-git clone https://github.com/beefsizzle/amane
+git clone https://github.com/MystiaFin/amane
 cd amane && ./install.sh && cd ..
 
-git clone https://github.com/beefsizzle/daru
+git clone -b upstream https://github.com/beefsizzle/daru
 amane target daru
 amane compile
 amane run
