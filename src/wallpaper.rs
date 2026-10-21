@@ -143,6 +143,9 @@ fn retheme(path: &str, display: &str) {
     let source = crate::wallpapers::thumbnail_if_ready(path).unwrap_or_else(|| display.to_string());
 
     Palette::write().open(&source, 16);
+
+    // and other apps follow
+    crate::recolor::export();
 }
 
 /// chooses a wallpaper, remembers it for the next start, and draws it and re-themes the shell from it

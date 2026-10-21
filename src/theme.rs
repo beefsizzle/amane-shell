@@ -108,7 +108,7 @@ pub fn derive(background: Color, foreground: Color, accent: Color) -> Theme {
     let fg = relit(foreground, TEXT, 0.0, 0.12);
     let accent_color = relit(accent, ACCENT, 0.45, 0.82);
 
-    let signal = |seed: Color| relit(mix(seed, accent_color, 0.20), SIGNAL, 0.48, 0.82);
+    let signal = |seed: Color| signal(seed, accent_color);
 
     Theme {
         glass: alpha(base(BACKGROUND), 0.62),
@@ -125,6 +125,24 @@ pub fn derive(background: Color, foreground: Color, accent: Color) -> Theme {
         red: signal(RED_SEED),
         yellow: signal(YELLOW_SEED),
     }
+}
+
+/// a signal colour (warnings, or syntax colours for other apps) from a seed hue, leaning a little toward the accent and
+/// as light as the red and yellow, so it reads on the background
+pub fn signal(seed: Color, accent: Color) -> Color {
+    relit(mix(seed, accent, 0.20), SIGNAL, 0.48, 0.82)
+}
+
+/// a translucent colour as it looks laid over `under`, for apps that want solid colours
+pub fn over(color: Color, under: Color) -> Color {
+    let solid = Color::rgb(color.red(), color.green(), color.blue());
+
+    mix(under, solid, f32::from(color.alpha()) / 255.0)
+}
+
+/// "#rrggbb"
+pub fn hex(color: Color) -> String {
+    format!("#{:02x}{:02x}{:02x}", color.red(), color.green(), color.blue())
 }
 
 // the colour's hue at the given lightness, its saturation kept within `least..=most` (a grey stays grey)
