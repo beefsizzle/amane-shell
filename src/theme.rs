@@ -155,7 +155,7 @@ fn relit(color: Color, lightness: f32, least: f32, most: f32) -> Color {
 }
 
 // hue in degrees, saturation and lightness 0..1
-fn to_hsl(color: Color) -> (f32, f32, f32) {
+pub fn to_hsl(color: Color) -> (f32, f32, f32) {
     let [r, g, b] = [color.red(), color.green(), color.blue()].map(|channel| f32::from(channel) / 255.0);
 
     let (high, low) = (r.max(g).max(b), r.min(g).min(b));

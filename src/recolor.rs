@@ -4,14 +4,15 @@ use std::sync::Mutex;
 
 use amane::{Argument, Bus, Color, Value};
 
-use crate::theme::{Theme, hex, mix, over, signal, theme};
+use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
 
 /*
  * the wallpaper's colours for other apps, written whenever the shell's own colours change. each app reads its file
  * from its own config, so it has to be pointed at it once (see the README); the shell only ever writes its own files
  * and never edits an app's config. which apps get a file is up to ~/.config/amane-shell/recolor, one name per line:
  *
- *     gtk       ~/.config/gtk-4.0/daru.css, for GTK4 and libadwaita apps when they next start
+ *     gtk       ~/.config/gtk-4.0/daru.css, for GTK4 and libadwaita apps when they next start, and GNOME's accent
+ *               setting, which libadwaita apps follow at once, even ones already open
  *     niri      ~/.config/niri/daru-colors.kdl, the focus ring. niri reloads it by itself
  *     ghostty   ~/.config/ghostty/daru-colors, background, text, cursor and selection. Ghostty is asked to reload
  *     zed       ~/.config/zed/themes/daru.json, a theme called "Daru". Zed reloads it by itself
@@ -60,6 +61,8 @@ pub fn export() {
             match app {
                 App::Gtk => {
                     write(&config("gtk-4.0/daru.css"), &gtk(&colors));
+
+                    set_accent(gnome_accent(colors.accent));
                 }
                 App::Niri => {
                     write(&config("niri/daru-colors.kdl"), &niri(&colors));
@@ -144,12 +147,13 @@ impl Colors {
 
 const HEADER: &str = "written by the daru shell from the wallpaper, and rewritten on every change";
 
-// libadwaita 1.6 and later read the css variables, older GTK4 apps the named colours
+/*
+ * libadwaita 1.6 and later read the css variables, older GTK4 apps the named colours. GTK reads this file only when an
+ * app starts, so the accent isn't in it: it comes from GNOME's accent setting instead (see `set_accent`), which open
+ * apps follow at once. a colour here would override that setting
+ */
 fn gtk(c: &Colors) -> String {
     let roles = [
-        ("accent-bg", c.accent),
-        ("accent-fg", c.on_accent),
-        ("accent", c.accent),
         ("window-bg", c.background),
         ("window-fg", c.text),
         ("view-bg", c.background),
@@ -184,6 +188,59 @@ fn gtk(c: &Colors) -> String {
     }
 
     text
+}
+
+/*
+ * GNOME's accent setting only has nine colours, so the wallpaper's accent becomes the nearest of them by hue. a nearly
+ * grey accent becomes slate. the hues are those of libadwaita's own accent colours
+ */
+fn gnome_accent(accent: Color) -> &'static str {
+    const HUES: [(&str, f32); 8] = [
+        ("blue", 213.0),
+        ("teal", 190.0),
+        ("green", 131.0),
+        ("yellow", 41.0),
+        ("orange", 23.0),
+        ("red", 353.0),
+        ("pink", 331.0),
+        ("purple", 285.0),
+    ];
+
+    let (hue, saturation, _) = to_hsl(accent);
+
+    if saturation < 0.15 {
+        return "slate";
+    }
+
+    // the distance around the colour wheel, so 350 and 10 are close
+    let distance = |other: f32| {
+        let apart = (hue - other).abs() % 360.0;
+
+        apart.min(360.0 - apart)
+    };
+
+    HUES.iter().min_by(|a, b| distance(a.1).total_cmp(&distance(b.1))).map_or("blue", |(name, _)| name)
+}
+
+// only when it changes: every change makes every libadwaita app restyle
+fn set_accent(name: &str) {
+    let current = Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "accent-color"])
+        .stderr(Stdio::null())
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().trim_matches('\'').to_string())
+        .unwrap_or_default();
+
+    if current == name {
+        return;
+    }
+
+    let _ = Command::new("gsettings")
+        .args(["set", "org.gnome.desktop.interface", "accent-color", name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 fn niri(c: &Colors) -> String {
@@ -364,4 +421,24 @@ fn zed(c: &Colors) -> String {
         dim_syntax = syntax(c.dim),
         accent_syntax = syntax(c.accent),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Color, gnome_accent};
+
+    #[test]
+    fn accents_land_on_the_nearest_gnome_colour() {
+        assert_eq!(gnome_accent(Color::rgb(0xea, 0x70, 0x7c)), "red"); // a pink-red
+        assert_eq!(gnome_accent(Color::rgb(0x6a, 0xb4, 0xf0)), "blue");
+        assert_eq!(gnome_accent(Color::rgb(0xcc, 0xd2, 0x89)), "yellow"); // an olive yellow
+        assert_eq!(gnome_accent(Color::rgb(0x60, 0xc0, 0x70)), "green");
+        assert_eq!(gnome_accent(Color::rgb(0x9a, 0x60, 0xd0)), "purple");
+        assert_eq!(gnome_accent(Color::rgb(0x30, 0xa8, 0xb8)), "teal");
+    }
+
+    #[test]
+    fn greys_become_slate() {
+        assert_eq!(gnome_accent(Color::rgb(0x88, 0x88, 0x8c)), "slate");
+    }
 }
