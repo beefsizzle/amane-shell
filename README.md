@@ -61,6 +61,18 @@ binds {
 
 Blur behind the bar and panels: add [`dev/niri-layer-rules.kdl`](dev/niri-layer-rules.kdl).
 
+## Other apps' colours
+
+The shell can write the wallpaper colours for other apps, live where the app allows it. List the apps in
+`~/.config/amane-shell/recolor`, one per line, and point each app at its file once:
+
+| app | file it writes | add to the app's config |
+|---|---|---|
+| `gtk` (GTK4 / libadwaita) | `~/.config/gtk-4.0/daru.css` (read when an app starts), and GNOME's `accent-color` (live, nearest of its 9) | `@import url("daru.css");` in `~/.config/gtk-4.0/gtk.css` |
+| `niri` (focus ring) | `~/.config/niri/daru-colors.kdl` | `include "daru-colors.kdl"` at the end of `config.kdl` |
+| `ghostty` | `~/.config/ghostty/daru-colors` | `config-file = ?daru-colors` |
+| `zed` | `~/.config/zed/themes/daru.json` | pick the "Daru" theme |
+
 ## Config
 
 In `~/.config/amane-shell/`:

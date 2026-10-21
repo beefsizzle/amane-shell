@@ -15,6 +15,7 @@ mod notify;
 mod netinfo;
 mod netpanel;
 mod panels;
+mod recolor;
 mod power;
 mod sound;
 mod sync;
@@ -75,6 +76,9 @@ fn main() {
 
         Palette::write().open(&source, 16);
     }
+
+    // other apps' colour files catch up with the wallpaper, in case it changed while the shell wasn't running
+    recolor::export();
 
     App::new()
         .font(TEXT_FONT)
