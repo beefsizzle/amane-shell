@@ -16,6 +16,9 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
  *     niri      ~/.config/niri/daru-colors.kdl, the focus ring. niri reloads it by itself
  *     ghostty   ~/.config/ghostty/daru-colors, background, text, cursor and selection. Ghostty is asked to reload
  *     zed       ~/.config/zed/themes/daru.json, a theme called "Daru". Zed reloads it by itself
+ *     kde       ~/.local/share/color-schemes/Daru.colors, a colour scheme for KDE apps like Dolphin, and the same colours
+ *               in ~/.config/kdeglobals, where Qt apps take them from with QT_QPA_PLATFORMTHEME=kde (plasma-integration).
+ *               open ones are told the palette changed, as Plasma does, and recolour at once
  */
 #[derive(Clone, Copy, PartialEq)]
 enum App {
@@ -23,6 +26,7 @@ enum App {
     Niri,
     Ghostty,
     Zed,
+    Kde,
 }
 
 // one export at a time: two wallpaper changes in quick succession must not interleave their writes
@@ -38,6 +42,7 @@ fn wanted() -> Vec<App> {
             "niri" => Some(App::Niri),
             "ghostty" => Some(App::Ghostty),
             "zed" => Some(App::Zed),
+            "kde" => Some(App::Kde),
             _ => None,
         })
         .collect()
@@ -75,6 +80,19 @@ pub fn export() {
                 App::Zed => {
                     write(&config("zed/themes/daru.json"), &zed(&colors));
                 }
+                App::Kde => {
+                    let scheme = kde(&colors);
+
+                    write(&data("color-schemes/Daru.colors"), &scheme);
+
+                    let globals = config("kdeglobals");
+
+                    let current = std::fs::read_to_string(&globals).unwrap_or_default();
+
+                    if write(&globals, &with_colors(&current, &scheme)) {
+                        palette_changed();
+                    }
+                }
             }
         }
     });
@@ -82,6 +100,16 @@ pub fn export() {
 
 fn config(file: &str) -> PathBuf {
     crate::cache::config_dir().parent().map_or_else(PathBuf::new, Path::to_path_buf).join(file)
+}
+
+// under ~/.local/share, or $XDG_DATA_HOME
+fn data(file: &str) -> PathBuf {
+    let home = std::env::var_os("XDG_DATA_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share"));
+
+    home.join(file)
 }
 
 // written under another name and renamed, so an app never reads half a file. false when it was already up to date,
@@ -276,6 +304,121 @@ fn ghostty(c: &Colors) -> String {
     text
 }
 
+// a KDE colour scheme: each group of widgets (windows, the file view, buttons, the selection...) gets the same set of
+// roles, as "red,green,blue"
+fn kde(c: &Colors) -> String {
+    let rgb = |color: Color| format!("{},{},{}", color.red(), color.green(), color.blue());
+
+    let group = |name: &str, background: Color, alternate: Color, text: Color| {
+        format!(
+            "[Colors:{name}]\nBackgroundNormal={}\nBackgroundAlternate={}\nForegroundNormal={}\nForegroundInactive={}\n\
+             ForegroundActive={}\nForegroundLink={}\nForegroundVisited={}\nForegroundNegative={}\nForegroundNeutral={}\n\
+             ForegroundPositive={}\nDecorationFocus={}\nDecorationHover={}\n\n",
+            rgb(background),
+            rgb(alternate),
+            rgb(text),
+            rgb(c.dim),
+            rgb(c.accent),
+            rgb(c.blue),
+            rgb(c.purple),
+            rgb(c.red),
+            rgb(c.yellow),
+            rgb(c.green),
+            rgb(c.accent),
+            rgb(c.accent),
+        )
+    };
+
+    let mut text = format!("# {HEADER}\n\n[General]\nColorScheme=Daru\nName=Daru\n\n");
+
+    text.push_str(&group("Window", c.background, c.surface, c.text));
+    text.push_str(&group("View", c.background, c.surface, c.text));
+    text.push_str(&group("Button", c.surface, c.raised, c.text));
+    text.push_str(&group("Header", c.surface, c.background, c.text));
+    text.push_str(&group("Tooltip", c.raised, c.surface, c.text));
+    text.push_str(&group("Complementary", c.surface, c.background, c.text));
+    text.push_str(&group("Selection", c.accent, mix(c.accent, c.background, 0.3), c.on_accent));
+
+    text.push_str(&format!(
+        "[WM]\nactiveBackground={}\nactiveForeground={}\ninactiveBackground={}\ninactiveForeground={}\n",
+        rgb(c.surface),
+        rgb(c.text),
+        rgb(c.background),
+        rgb(c.dim),
+    ));
+
+    text
+}
+
+/*
+ * kdeglobals with the scheme's colour groups in place of any it had, and its [General] ColorScheme pointing at it,
+ * the way Plasma applies a scheme. everything else in the file (icons, previews, the terminal) is kept as it was.
+ * without these groups KDE apps fall back to the light default for text, dark on a dark window
+ */
+fn with_colors(globals: &str, scheme: &str) -> String {
+    let colour_group = |header: &str| header.starts_with("[Colors:") || header.starts_with("[ColorEffects:") || header == "[WM]";
+
+    // split into sections, each its header line and the lines after it. lines before the first header have ""
+    let sections = |text: &str| {
+        let mut sections: Vec<(String, Vec<String>)> = vec![(String::new(), Vec::new())];
+
+        for line in text.lines() {
+            if line.starts_with('[') {
+                sections.push((line.trim().to_string(), Vec::new()));
+            } else if let Some((_, lines)) = sections.last_mut() {
+                lines.push(line.to_string());
+            }
+        }
+
+        sections
+    };
+
+    let mut kept: Vec<(String, Vec<String>)> = sections(globals).into_iter().filter(|(header, _)| !colour_group(header)).collect();
+
+    // [General] ColorScheme=Daru, in the existing [General] or a new one
+    let general = match kept.iter().position(|(header, _)| header == "[General]") {
+        Some(index) => index,
+        None => {
+            kept.push((String::from("[General]"), Vec::new()));
+            kept.len() - 1
+        }
+    };
+
+    let lines = &mut kept[general].1;
+
+    lines.retain(|line| !line.starts_with("ColorScheme="));
+    lines.insert(0, String::from("ColorScheme=Daru"));
+
+    let mut text = String::new();
+
+    for (header, lines) in kept.iter().chain(sections(scheme).iter().filter(|(header, _)| colour_group(header))) {
+        if !header.is_empty() {
+            text.push_str(header);
+            text.push('\n');
+        }
+
+        // one blank line between sections, however many there were
+        let body: Vec<&String> = lines.iter().filter(|line| !line.trim().is_empty()).collect();
+
+        for line in body {
+            text.push_str(line);
+            text.push('\n');
+        }
+
+        if !header.is_empty() || !lines.iter().all(|line| line.trim().is_empty()) {
+            text.push('\n');
+        }
+    }
+
+    text
+}
+
+// what Plasma sends when the colour scheme changes: Qt apps using KDE's platform theme read kdeglobals again.
+// (KGlobalSettings::notifyChange, with PaletteChanged, which is 0)
+fn palette_changed() {
+    Bus::session().emit("/KGlobalSettings", "org.kde.KGlobalSettings", "notifyChange", &[Argument::Int(0), Argument::Int(0)]);
+}
+
 // Ghostty reloads its config when asked over D-Bus, but only while it's running: asking would otherwise start it
 fn reload_ghostty() {
     const NAME: &str = "com.mitchellh.ghostty";
@@ -435,6 +578,22 @@ mod tests {
         assert_eq!(gnome_accent(Color::rgb(0x60, 0xc0, 0x70)), "green");
         assert_eq!(gnome_accent(Color::rgb(0x9a, 0x60, 0xd0)), "purple");
         assert_eq!(gnome_accent(Color::rgb(0x30, 0xa8, 0xb8)), "teal");
+    }
+
+    #[test]
+    fn kdeglobals_keeps_its_settings_and_gets_the_colours() {
+        let globals = "[General]\nTerminalApplication=ghostty\nColorScheme=Old\n\n[Icons]\nTheme=breeze-dark\n\n[Colors:View]\nForegroundNormal=1,2,3\n";
+        let scheme = "# header\n\n[General]\nColorScheme=Daru\nName=Daru\n\n[Colors:View]\nForegroundNormal=236,232,237\n\n[WM]\nactiveBackground=1,1,1\n";
+
+        let merged = super::with_colors(globals, scheme);
+
+        assert!(merged.contains("TerminalApplication=ghostty"));
+        assert!(merged.contains("[Icons]\nTheme=breeze-dark"));
+        assert!(merged.contains("ColorScheme=Daru") && !merged.contains("ColorScheme=Old"));
+        assert!(merged.contains("ForegroundNormal=236,232,237") && !merged.contains("ForegroundNormal=1,2,3"));
+        assert!(merged.contains("[WM]"));
+        assert!(!merged.contains("Name=Daru"), "the scheme's own [General] stays out of kdeglobals");
+        assert_eq!(merged.matches("[General]").count(), 1);
     }
 
     #[test]
