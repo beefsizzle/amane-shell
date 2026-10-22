@@ -147,10 +147,15 @@ fn avatar(t: &Theme, notification: &Notification) -> Rectangle {
     let app_icon = crate::icons::resolve(notification.icon()).or_else(|| crate::icons::resolve(&notification.app_name().to_lowercase()));
 
     if let Some(path) = app_icon {
-        return base
-            .fill(t.surface_hi)
-            .padding(7.0)
-            .child(Rectangle::new().width(26.0).height(26.0).fill(crate::ui::app_icon(&path)));
+        /*
+         * a sender can give a file of its own as the icon, like a screenshot tool showing the screenshot. that's
+         * decoded plainly and let go with the card, not as an app icon, whose small copies are kept for good
+         */
+        let own_file = notification.icon().trim().trim_start_matches("file://").starts_with('/');
+
+        let picture = if own_file { Image::contain(&path) } else { crate::ui::app_icon(&path) };
+
+        return base.fill(t.surface_hi).padding(7.0).child(Rectangle::new().width(26.0).height(26.0).fill(picture));
     }
 
     let critical = notification.urgency() == Urgency::Critical;

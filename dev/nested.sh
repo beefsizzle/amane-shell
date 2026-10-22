@@ -8,6 +8,9 @@ mkdir -p /tmp/amane-nested-runtime && chmod 700 /tmp/amane-nested-runtime
 
 export AMANE_WALLPAPER="${1:-$HOME/Pictures/Wallpapers/465731-beautiful-minimalist-desktop-wallpaper-4k-catppuccin-mocha.png}"
 
+# the sandbox shares your home folder, so its shell must not write your apps' colour files (see src/recolor.rs)
+export DARU_NO_RECOLOR=1
+
 # the shell binary is copied, so `amane restart` (which kills by path) never touches the real one
 cp "$HOME/.cache/amane/amane-shell" "$PWD/.amane-shell-nested"
 

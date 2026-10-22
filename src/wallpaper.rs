@@ -87,40 +87,59 @@ pub fn display_ready(path: &str, display: &str) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
 
+        // the files this thread asked about, which it lets go of again if it gives up
+        let mut asked: Vec<String> = Vec::new();
+
         /*
-         * the fade is drawn by the shell, and needs both pictures decoded: the new one, and the one on screen now,
-         * which the compositor has been drawing from its own copy. asking also starts the decode. a wallpaper picked
-         * meanwhile takes over, this one stops waiting
+         * the fade is drawn by the shell, and needs both pictures decoded: the new one, and the one under it, which
+         * the compositor has been drawing from its own copy. that's whatever is on screen when the fade starts, so a
+         * fade still running finishes first. asking also starts the decode. a file that won't decode is faded in
+         * anyway after a while, and shows as nothing
          */
-        let old = Wallpaper::read().shown.clone();
+        loop {
+            let (chosen, old, busy) = {
+                let wallpaper = Wallpaper::read();
 
-        let ready = |file: &str| file.is_empty() || Image::loaded(file);
+                (wallpaper.path == path, wallpaper.shown.clone(), wallpaper.incoming.is_some())
+            };
 
-        while !(ready(&display) && ready(&old)) && started.elapsed() < DECODE_WITHIN {
-            if Wallpaper::read().path != path {
-                return;
+            // a wallpaper picked meanwhile takes over
+            if !chosen {
+                return let_go(&asked);
+            }
+
+            let waited_out = started.elapsed() >= DECODE_WITHIN;
+
+            if !busy && old == display {
+                return let_go(&asked);
+            }
+
+            if !busy && (waited_out || (ready(&display, &mut asked) && ready(&old, &mut asked))) {
+                /*
+                 * checked again and written under one lock: picking another wallpaper meanwhile must not end up
+                 * showing this one, the picture under the fade must still be the one on screen, and a wait that gave
+                 * up (see let_go) must not have let go of either picture in between
+                 */
+                let mut wallpaper = Wallpaper::write();
+
+                if wallpaper.path != path {
+                    drop(wallpaper);
+
+                    return let_go(&asked);
+                }
+
+                let decoded = waited_out || (ready(&display, &mut asked) && ready(&old, &mut asked));
+
+                if decoded && wallpaper.shown == old && wallpaper.incoming.is_none() {
+                    wallpaper.incoming = Some(display.clone());
+                    wallpaper.fade = Animation::new(0.0).duration(FADE);
+                    wallpaper.fade.to(1.0);
+
+                    break;
+                }
             }
 
             std::thread::sleep(Duration::from_millis(16));
-        }
-
-        // checked and written under one lock: picking another wallpaper meanwhile must not end up showing this one
-        let fading = {
-            let mut wallpaper = Wallpaper::write();
-
-            let fading = wallpaper.path == path && wallpaper.shown != display && wallpaper.incoming.as_deref() != Some(display.as_str());
-
-            if fading {
-                wallpaper.incoming = Some(display.clone());
-                wallpaper.fade = Animation::new(0.0).duration(FADE);
-                wallpaper.fade.to(1.0);
-            }
-
-            fading
-        };
-
-        if !fading {
-            return;
         }
 
         // the colours change as the picture starts to
@@ -128,7 +147,7 @@ pub fn display_ready(path: &str, display: &str) {
 
         std::thread::sleep(FADE);
 
-        // once it covers the old one it becomes the wallpaper, unless an even newer one took its place
+        // once it covers the old one it becomes the wallpaper
         let mut wallpaper = Wallpaper::write();
 
         if wallpaper.incoming.as_deref() == Some(display.as_str()) {
@@ -137,6 +156,26 @@ pub fn display_ready(path: &str, display: &str) {
         }
     });
 }
+
+// whether the file is decoded, starting the decode if not, and noting it was asked about (see let_go)
+fn ready(file: &str, asked: &mut Vec<String>) -> bool {
+    if file.is_empty() {
+        return true;
+    }
+
+    if !asked.iter().any(|known| known == file) {
+        asked.push(file.to_string());
+    }
+
+    Image::loaded(file)
+}
+
+/*
+ * a decoded picture no window draws is never let go by itself, and stock Amane has no way to let go of one (the fork's
+ * Image::forget, which the main branch uses here). so on this branch a wallpaper picked over before it finished
+ * decoding stays in memory
+ */
+fn let_go(_: &[String]) {}
 
 // the palette is read from the small thumbnail when there is one, which is quicker than any wallpaper
 fn retheme(path: &str, display: &str) {
