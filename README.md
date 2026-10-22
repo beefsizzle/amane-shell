@@ -74,6 +74,7 @@ The shell can write the wallpaper colours for other apps, live where the app all
 | `ghostty` | `~/.config/ghostty/daru-colors` | `config-file = ?daru-colors` |
 | `zed` | `~/.config/zed/themes/daru.json` | pick the "Daru" theme |
 | `kde` (Dolphin, Qt apps) | `~/.local/share/color-schemes/Daru.colors`, and the colours in `~/.config/kdeglobals` (live) | install `plasma-integration` and set `QT_QPA_PLATFORMTHEME=kde` |
+| `strata` ([Strata](https://github.com/lgse/strata)) | `~/.config/strata/themes/daru.toml` (live) | pick the "Daru" theme |
 
 ## Config
 
