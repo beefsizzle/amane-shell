@@ -49,8 +49,13 @@ fn wanted() -> Vec<App> {
 }
 
 /// writes the current colours for every app that asked for them. the files are small, but this runs on a thread of
-/// its own all the same, after the shell has already recoloured itself
+/// its own all the same, after the shell has already recoloured itself. DARU_NO_RECOLOR turns it off, for a second
+/// shell that shares the home folder, like dev/nested.sh's
 pub fn export() {
+    if std::env::var_os("DARU_NO_RECOLOR").is_some_and(|value| !value.is_empty()) {
+        return;
+    }
+
     std::thread::spawn(|| {
         let _writing = crate::sync::lock(&WRITING);
 
@@ -87,9 +92,16 @@ pub fn export() {
 
                     let globals = config("kdeglobals");
 
-                    let current = std::fs::read_to_string(&globals).unwrap_or_default();
+                    // KDE apps write to kdeglobals too, so it's read, changed and written while holding their lock
+                    let changed = {
+                        let _locked = KdeLock::take(&globals);
 
-                    if write(&globals, &with_colors(&current, &scheme)) {
+                        let current = std::fs::read_to_string(&globals).unwrap_or_default();
+
+                        write(&globals, &with_colors(&current, &scheme))
+                    };
+
+                    if changed {
                         palette_changed();
                     }
                 }
@@ -113,11 +125,14 @@ fn data(file: &str) -> PathBuf {
 }
 
 // written under another name and renamed, so an app never reads half a file. false when it was already up to date,
-// so nothing needs to reload
+// so nothing needs to reload. a symlink (kdeglobals kept with dotfiles) stays one: its target is replaced instead
 fn write(path: &Path, text: &str) -> bool {
     if std::fs::read_to_string(path).is_ok_and(|current| current == text) {
         return false;
     }
+
+    let resolved = path.is_symlink().then(|| std::fs::canonicalize(path).ok()).flatten();
+    let path = resolved.as_deref().unwrap_or(path);
 
     if let Some(folder) = path.parent() {
         let _ = std::fs::create_dir_all(folder);
@@ -413,6 +428,46 @@ fn with_colors(globals: &str, scheme: &str) -> String {
     text
 }
 
+/*
+ * the lock KDE apps take before writing a config file (KConfig, through Qt's QLockFile): "<file>.lock", created only if
+ * it doesn't exist, holding the process id, the program and the host. one that's still there after a second is taken
+ * to be left over from a crash, and the file is written all the same
+ */
+struct KdeLock(Option<PathBuf>);
+
+impl KdeLock {
+    fn take(file: &Path) -> Self {
+        let mut name = file.as_os_str().to_owned();
+        name.push(".lock");
+
+        let lock = PathBuf::from(name);
+
+        let host = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+
+        for _ in 0..50 {
+            let created = std::fs::OpenOptions::new().write(true).create_new(true).open(&lock);
+
+            if let Ok(mut created) = created {
+                let _ = std::io::Write::write_all(&mut created, format!("{}\ndaru\n{}\n", std::process::id(), host.trim()).as_bytes());
+
+                return Self(Some(lock));
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+
+        Self(None)
+    }
+}
+
+impl Drop for KdeLock {
+    fn drop(&mut self) {
+        if let Some(lock) = &self.0 {
+            let _ = std::fs::remove_file(lock);
+        }
+    }
+}
+
 // what Plasma sends when the colour scheme changes: Qt apps using KDE's platform theme read kdeglobals again.
 // (KGlobalSettings::notifyChange, with PaletteChanged, which is 0)
 fn palette_changed() {
@@ -594,6 +649,36 @@ mod tests {
         assert!(merged.contains("[WM]"));
         assert!(!merged.contains("Name=Daru"), "the scheme's own [General] stays out of kdeglobals");
         assert_eq!(merged.matches("[General]").count(), 1);
+    }
+
+    #[test]
+    fn a_symlinked_file_keeps_its_link_and_kde_locks_are_waited_for() {
+        let folder = std::env::temp_dir().join(format!("daru-recolor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+
+        let (target, link) = (folder.join("dotfiles-kdeglobals"), folder.join("kdeglobals"));
+        std::fs::write(&target, "old").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(super::write(&link, "new"));
+        assert!(link.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert!(!super::write(&link, "new"), "unchanged, so nothing to reload");
+
+        // held while taken, gone once dropped, and a second taker waits it out
+        let lock = folder.join("kdeglobals.lock");
+        let held = super::KdeLock::take(&link);
+        assert!(lock.exists() && held.0.is_some());
+
+        let waiting = std::thread::spawn(move || super::KdeLock::take(&folder.join("kdeglobals")).0.is_some());
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        drop(held);
+
+        assert!(waiting.join().unwrap());
+        assert!(!lock.exists());
+
+        let _ = std::fs::remove_dir_all(lock.parent().unwrap());
     }
 
     #[test]

@@ -194,11 +194,13 @@ fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
         .visible(!shown.is_empty() || incoming.is_some());
 
     match &incoming {
-        // a new wallpaper fades in on top of the old one, drawn by the gpu for as long as that takes
-        Some(incoming) => window.child(
-            base.fill(Image::cover(&shown))
-                .child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade)),
-        ),
+        // a new wallpaper fades in on top of the old one (black, the very first time), drawn by the gpu for as long
+        // as that takes
+        Some(incoming) => {
+            let under = if shown.is_empty() { base.fill(amane::Color::BLACK) } else { base.fill(Image::cover(&shown)) };
+
+            window.child(under.child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade)))
+        }
         // the compositor draws it. the child only shows while the file is first decoding, and must not name the
         // picture itself, or the shell would decode its own copy again
         None if !shown.is_empty() => window.picture(&shown).child(base.fill(amane::Color::BLACK)),
