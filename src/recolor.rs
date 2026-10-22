@@ -19,6 +19,8 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
  *     kde       ~/.local/share/color-schemes/Daru.colors, a colour scheme for KDE apps like Dolphin, and the same colours
  *               in ~/.config/kdeglobals, where Qt apps take them from with QT_QPA_PLATFORMTHEME=kde (plasma-integration).
  *               open ones are told the palette changed, as Plasma does, and recolour at once
+ *     strata    ~/.config/strata/themes/daru.toml, a theme called "Daru" for the Strata file manager, which reloads it
+ *               by itself
  */
 #[derive(Clone, Copy, PartialEq)]
 enum App {
@@ -27,6 +29,7 @@ enum App {
     Ghostty,
     Zed,
     Kde,
+    Strata,
 }
 
 // one export at a time: two wallpaper changes in quick succession must not interleave their writes
@@ -43,6 +46,7 @@ fn wanted() -> Vec<App> {
             "ghostty" => Some(App::Ghostty),
             "zed" => Some(App::Zed),
             "kde" => Some(App::Kde),
+            "strata" => Some(App::Strata),
             _ => None,
         })
         .collect()
@@ -104,6 +108,9 @@ pub fn export() {
                     if changed {
                         palette_changed();
                     }
+                }
+                App::Strata => {
+                    write(&config("strata/themes/daru.toml"), &strata(&colors));
                 }
             }
         }
@@ -498,6 +505,37 @@ fn reload_ghostty() {
         .status();
 }
 
+/*
+ * Strata's nine colours, plus its code preview's. "muted" fills raised things like switches and table headers,
+ * "highlight" the hovered and selected rows
+ */
+fn strata(c: &Colors) -> String {
+    let lines = [
+        ("background", c.background),
+        ("surface", c.surface),
+        ("text", c.text),
+        ("accent", c.accent),
+        ("danger", c.red),
+        ("muted", c.raised),
+        ("highlight", mix(c.background, c.accent, 0.35)),
+        ("border", c.border),
+        ("dim_text", c.dim),
+        ("syntax_keyword", c.purple),
+        ("syntax_string", c.green),
+        ("syntax_constant", c.orange),
+        ("syntax_type", c.yellow),
+        ("syntax_preprocessor", c.blue),
+    ];
+
+    let mut text = format!("# {HEADER}\n\nname = \"Daru\"\n");
+
+    for (key, color) in lines {
+        text.push_str(&format!("{key} = \"{}\"\n", hex(color)));
+    }
+
+    text
+}
+
 fn zed(c: &Colors) -> String {
     let h = |color: Color| hex(color);
 
@@ -679,6 +717,20 @@ mod tests {
         assert!(!lock.exists());
 
         let _ = std::fs::remove_dir_all(lock.parent().unwrap());
+    }
+
+    #[test]
+    fn the_strata_theme_has_all_nine_colours() {
+        let theme = super::strata(&super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c))));
+
+        assert!(theme.contains("name = \"Daru\""));
+
+        for key in ["background", "surface", "text", "accent", "danger", "muted", "highlight", "border", "dim_text"] {
+            let line = theme.lines().find(|line| line.starts_with(&format!("{key} = "))).unwrap_or_else(|| panic!("no {key}"));
+            let value = line.split('"').nth(1).unwrap();
+
+            assert!(value.len() == 7 && value.starts_with('#'), "{line}");
+        }
     }
 
     #[test]
