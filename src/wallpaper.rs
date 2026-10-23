@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use amane::{Animation, Image, Palette, Service};
@@ -8,6 +10,30 @@ pub struct Wallpaper {
     pub shown: String,            // the file that's drawn: a screen-sized copy, empty until it exists
     pub incoming: Option<String>, // a new copy fading in over `shown`
     pub fade: Animation,          // how far it has, 0 to 1
+    pub waiting: bool,            // `incoming` is drawn, still invisible, until its fade can start (see `drawn_waiting`)
+}
+
+/*
+ * the frames each monitor's wallpaper window has drawn of a fade that hasn't started. the first frame of a fade sends
+ * both pictures to the gpu, which takes a while on a laptop, and a fade whose clock started before that frame shows up
+ * would be half over at its first step. frames come one after another, so once every monitor has drawn a second frame,
+ * the first is on screen and the fade starts from nothing
+ */
+static WAITING_FRAMES: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+
+// how long a fade waits for its first frame at most: a hidden or stalled window mustn't hold it back
+const WAIT_FOR_FRAME: Duration = Duration::from_millis(300);
+
+/// the wallpaper window of `monitor` drew a frame of a fade that's waiting (see `WAITING_FRAMES`)
+pub fn drawn_waiting(monitor: &str) {
+    if let Some(frames) = crate::sync::lock(&WAITING_FRAMES).as_mut() {
+        *frames.entry(monitor.to_string()).or_insert(0) += 1;
+    }
+}
+
+// every monitor that drew the waiting fade has drawn it twice
+fn first_frame_shown() -> bool {
+    crate::sync::lock(&WAITING_FRAMES).as_ref().is_some_and(|frames| !frames.is_empty() && frames.values().all(|count| *count >= 2))
 }
 
 // how long a new wallpaper takes to fade in
@@ -59,7 +85,7 @@ impl Service for Wallpaper {
 
         let shown = shown_for(&path);
 
-        Self { path, shown, incoming: None, fade: Animation::new(0.0).duration(FADE) }
+        Self { path, shown, incoming: None, fade: Animation::new(0.0).duration(FADE), waiting: false }
     }
 
     fn interval() -> Duration {
@@ -114,7 +140,7 @@ pub fn display_ready(path: &str, display: &str) {
                 return let_go(&asked);
             }
 
-            if !busy && (waited_out || (ready(&display, &mut asked) && ready(&old, &mut asked))) {
+            if !busy && (waited_out || both_ready(&display, &old, &mut asked)) {
                 /*
                  * checked again and written under one lock: picking another wallpaper meanwhile must not end up
                  * showing this one, the picture under the fade must still be the one on screen, and a wait that gave
@@ -128,18 +154,36 @@ pub fn display_ready(path: &str, display: &str) {
                     return let_go(&asked);
                 }
 
-                let decoded = waited_out || (ready(&display, &mut asked) && ready(&old, &mut asked));
+                let decoded = waited_out || both_ready(&display, &old, &mut asked);
 
                 if decoded && wallpaper.shown == old && wallpaper.incoming.is_none() {
+                    // drawn at nothing until its first frame is on screen, see WAITING_FRAMES
+                    *crate::sync::lock(&WAITING_FRAMES) = Some(HashMap::new());
+
                     wallpaper.incoming = Some(display.clone());
                     wallpaper.fade = Animation::new(0.0).duration(FADE);
-                    wallpaper.fade.to(1.0);
+                    wallpaper.waiting = true;
 
                     break;
                 }
             }
 
-            std::thread::sleep(Duration::from_millis(16));
+            std::thread::sleep(Duration::from_millis(4));
+        }
+
+        let waited = std::time::Instant::now();
+
+        while !first_frame_shown() && waited.elapsed() < WAIT_FOR_FRAME {
+            std::thread::sleep(Duration::from_millis(4));
+        }
+
+        *crate::sync::lock(&WAITING_FRAMES) = None;
+
+        {
+            let mut wallpaper = Wallpaper::write();
+
+            wallpaper.waiting = false;
+            wallpaper.fade.to(1.0);
         }
 
         // the colours change as the picture starts to
@@ -155,6 +199,14 @@ pub fn display_ready(path: &str, display: &str) {
             wallpaper.incoming = None;
         }
     });
+}
+
+// both asked every time, so the two pictures decode side by side rather than one after the other
+fn both_ready(display: &str, old: &str, asked: &mut Vec<String>) -> bool {
+    let new = ready(display, asked);
+    let under = ready(old, asked);
+
+    new && under
 }
 
 // whether the file is decoded, starting the decode if not, and noting it was asked about (see let_go)

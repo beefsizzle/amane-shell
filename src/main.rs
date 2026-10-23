@@ -183,12 +183,19 @@ fn main() {
  * no `.thumbnail()` here on purpose: Amane keeps small copies for good, and the file is already a screen-sized copy
  * (see wallpapers.rs)
  */
-fn wallpaper_window(_: &amane::Monitor) -> LayerWindow {
-    let (shown, incoming, fade) = {
+fn wallpaper_window(monitor: &amane::Monitor) -> LayerWindow {
+    let (shown, incoming, fade, waiting) = {
         let wallpaper = wallpaper::Wallpaper::read();
 
-        (wallpaper.shown.clone(), wallpaper.incoming.clone(), wallpaper.fade.value())
+        (wallpaper.shown.clone(), wallpaper.incoming.clone(), wallpaper.fade.value(), wallpaper.waiting)
     };
+
+    // a fade that can't start until its first frame is on screen keeps the window drawing, see wallpaper.rs
+    if waiting {
+        wallpaper::drawn_waiting(&monitor.name);
+
+        amane::request_frame();
+    }
 
     let base = Rectangle::new().width(Parent).height(Parent);
 
