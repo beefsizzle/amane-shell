@@ -57,6 +57,7 @@ fn thumbnail_path(path: &str) -> String {
  * jpeg at the biggest screen's size, made once with ImageMagick
  */
 const DISPLAY: &str = "2560x1440";
+const DISPLAY_SIZE: (u32, u32) = (2560, 1440);
 
 fn display_path(path: &str) -> String {
     cache("display", path)
@@ -102,9 +103,58 @@ static RUNNING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new()
 
 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/*
+ * a jpeg can be decoded straight at 1/8, 2/8 ... 7/8 of its size, which takes a fraction of the memory: a 6000 pixel
+ * photo decoded whole takes hundreds of megabytes for a moment, only to be shrunk. ImageMagick's jpeg:size picks the
+ * scale below the size asked for, not above, so the exact size of the smallest scale that still covers `fill` is
+ * worked out here from the picture's own size. None for a jpeg that can't shrink (or anything else): decode it whole
+ */
+fn decode_size(width: u32, height: u32, rotated: bool, fill: (u32, u32)) -> Option<(u32, u32)> {
+    // a picture stored on its side is turned after decoding, so its stored width becomes the height
+    let (fill_width, fill_height) = if rotated { (fill.1, fill.0) } else { fill };
+
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    // the eighths needed to cover the fill on both sides
+    let eighths = |side: u32, wanted: u32| (u64::from(wanted) * 8).div_ceil(u64::from(side));
+
+    let scale = eighths(width, fill_width).max(eighths(height, fill_height)).max(1);
+
+    if scale >= 8 {
+        return None;
+    }
+
+    let at = |side: u32| (u64::from(side) * scale).div_ceil(8) as u32;
+
+    Some((at(width), at(height)))
+}
+
+// "-define jpeg:size=WxH " for a jpeg that can be decoded smaller, read from its header without decoding it
+fn decode_option(source: &str, fill: (u32, u32)) -> String {
+    let header = amane::output(&format!("magick identify -ping -format '%m %w %h %[orientation]' {}[0]", quote(source)));
+
+    let mut fields = header.split_whitespace();
+
+    if fields.next() != Some("JPEG") {
+        return String::new();
+    }
+
+    let mut number = || fields.next().and_then(|text| text.parse().ok()).unwrap_or(0);
+
+    let (width, height) = (number(), number());
+
+    // LeftTop, RightTop, RightBottom and LeftBottom are turned a quarter
+    let rotated = matches!(header.split_whitespace().nth(3), Some("LeftTop" | "RightTop" | "RightBottom" | "LeftBottom"));
+
+    decode_size(width, height, rotated, fill).map_or_else(String::new, |(w, h)| format!("-define jpeg:size={w}x{h} "))
+}
+
 /// runs ImageMagick from `source` to `target`, written under another name and renamed when it's whole.
-/// slow, so never on the drawing thread
-fn convert(source: &str, target: &str, options: &str) -> bool {
+/// slow, so never on the drawing thread. `fill` is the size the result is shrunk to cover, so a jpeg can be decoded
+/// smaller to begin with (see `decode_size`)
+fn convert(source: &str, target: &str, fill: (u32, u32), options: &str) -> bool {
     if complete_jpeg(target) {
         return true;
     }
@@ -140,7 +190,9 @@ fn convert(source: &str, target: &str, options: &str) -> bool {
 
     let partial = format!("{target}.{}.part", COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
 
-    amane::output(&format!("nice -n 19 magick {}[0] -auto-orient {options} jpeg:{}", quote(source), quote(&partial)));
+    let decode = decode_option(source, fill);
+
+    amane::output(&format!("nice -n 19 magick {decode}{}[0] -auto-orient {options} jpeg:{}", quote(source), quote(&partial)));
 
     let made = complete_jpeg(&partial) && std::fs::rename(&partial, target).is_ok();
 
@@ -200,7 +252,7 @@ pub fn make_display(path: &str) -> Option<String> {
 
     let display = display_path(path);
 
-    convert(path, &display, &options).then_some(display)
+    convert(path, &display, DISPLAY_SIZE, &options).then_some(display)
 }
 
 /*
@@ -213,7 +265,8 @@ pub fn make_blurred(path: &str) -> Option<String> {
 
     let blurred = cache("blurred", path);
 
-    convert(&display, &blurred, "-resize 480x -blur 0x8 -resize 1920x -quality 90").then_some(blurred)
+    // decoded at twice the size it's blurred at, and enlarged only to 1280: the login screen scales a blur up seamlessly
+    convert(&display, &blurred, (960, 540), "-resize 480x -blur 0x8 -resize 1280x -quality 90").then_some(blurred)
 }
 
 fn make_thumbnail(path: &str) -> Option<String> {
@@ -221,7 +274,8 @@ fn make_thumbnail(path: &str) -> Option<String> {
 
     let thumbnail = thumbnail_path(path);
 
-    convert(path, &thumbnail, &options).then_some(thumbnail)
+    // decoded at twice the thumbnail's size at least, so the last shrink is ImageMagick's own and stays sharp
+    convert(path, &thumbnail, (THUMB_WIDTH * 2, THUMB_HEIGHT * 2), &options).then_some(thumbnail)
 }
 
 fn list() -> Vec<String> {
@@ -500,4 +554,53 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
             .on_scroll(|scroll| Wallpapers::write().scroll(if scroll.y.abs() >= scroll.x.abs() { scroll.y } else { scroll.x }))
             .child(content),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_size;
+
+    // the size ImageMagick decodes at when asked for `size`: the eighth below it, as jpeg:size does
+    fn decoded(width: u32, height: u32, size: (u32, u32)) -> (u32, u32) {
+        let eighths = (size.0 * 8 / width).min(size.1 * 8 / height);
+
+        ((width * eighths).div_ceil(8), (height * eighths).div_ceil(8))
+    }
+
+    #[test]
+    fn a_4k_picture_is_decoded_at_six_eighths_to_cover_1440p() {
+        let size = decode_size(3840, 2160, false, (2560, 1440)).unwrap();
+
+        assert_eq!(size, (2880, 1620));
+        assert_eq!(decoded(3840, 2160, size), (2880, 1620));
+    }
+
+    #[test]
+    fn the_decoded_picture_always_covers_the_fill() {
+        for (width, height) in [(3840, 2160), (6016, 6016), (6067, 3467), (5120, 2880), (6000, 3375), (2561, 1441), (7000, 1500)] {
+            for fill in [(2560, 1440), (960, 540)] {
+                if let Some(size) = decode_size(width, height, false, fill) {
+                    let (w, h) = decoded(width, height, size);
+
+                    assert!(w >= fill.0 && h >= fill.1, "{width}x{height} for {fill:?} decoded at {w}x{h}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_picture_stored_on_its_side_covers_the_turned_fill() {
+        // a portrait photo stored 4000 wide, shown 3000 wide and 4000 high
+        let size = decode_size(4000, 3000, true, (2560, 1440)).unwrap();
+        let (w, h) = decoded(4000, 3000, size);
+
+        assert!(h >= 2560 && w >= 1440, "{w}x{h}");
+    }
+
+    #[test]
+    fn a_picture_too_small_to_shrink_is_decoded_whole() {
+        assert_eq!(decode_size(2560, 1440, false, (2560, 1440)), None);
+        assert_eq!(decode_size(1920, 1080, false, (2560, 1440)), None);
+        assert_eq!(decode_size(0, 0, false, (2560, 1440)), None);
+    }
 }
