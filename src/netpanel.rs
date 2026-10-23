@@ -93,12 +93,16 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     let (glyph, title) = match network.link() {
         Link::Wired => ("\u{f0200}", String::from("Wired connection")),
-        Link::Wifi => (wifi::glyph(network.strength()), format!("Wi-Fi \u{b7} {}", network.ssid())),
+        Link::Wifi => (wifi::glyph(network.strength(), network.internet()), format!("Wi-Fi \u{b7} {}", network.ssid())),
         Link::Offline => ("\u{f05aa}", String::from("Offline")),
         _ => ("\u{f0200}", String::from("Connected")),
     };
 
-    let subtitle = if info.interface.is_empty() { String::from("No active interface") } else { format!("{} \u{b7} {}", info.connection, info.interface) };
+    let mut subtitle = if info.interface.is_empty() { String::from("No active interface") } else { format!("{} \u{b7} {}", info.connection, info.interface) };
+
+    if network.connected() && !network.internet() {
+        subtitle = format!("No internet \u{b7} {subtitle}");
+    }
 
     let header = Row::new(children![
         Rectangle::new()
@@ -212,7 +216,7 @@ fn order(points: &[AccessPoint]) -> Vec<&AccessPoint> {
     sorted
 }
 
-fn status(point: &AccessPoint, wifi: &Wifi, connecting: bool) -> (String, bool) {
+fn status(point: &AccessPoint, wifi: &Wifi, connecting: bool, internet: bool) -> (String, bool) {
     let ssid = point.ssid();
 
     if wifi.joining.as_deref() == Some(ssid) {
@@ -220,7 +224,7 @@ fn status(point: &AccessPoint, wifi: &Wifi, connecting: bool) -> (String, bool) 
     }
 
     if point.active() {
-        return (String::from("Connected"), true);
+        return (String::from(if internet { "Connected" } else { "Connected, no internet" }), true);
     }
 
     if let Some(failure) = wifi.failed.as_ref().filter(|failure| failure.ssid == ssid) {
@@ -236,7 +240,7 @@ fn status(point: &AccessPoint, wifi: &Wifi, connecting: bool) -> (String, bool) 
     (String::from(text), false)
 }
 
-fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, connecting: bool) -> Rectangle {
+fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, network: &Network) -> Rectangle {
     let id = format!("wifi-{index}");
     let hot = hover(&id);
 
@@ -244,7 +248,7 @@ fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, connec
     let (active, saved, secured) = (point.active(), point.saved(), point.secured());
     let busy = wifi.joining.is_some();
 
-    let (text, lit) = status(point, wifi, connecting);
+    let (text, lit) = status(point, wifi, network.connecting(), network.internet());
 
     let action = if active {
         "Disconnect"
@@ -288,7 +292,7 @@ fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, connec
         })
         .child(
             Row::new(vec![
-                Box::new(Rectangle::new().width(22.0).height(22.0).align_child(Center, Center).child(icon(wifi::glyph(point.strength()), 15.0, glyph_color)))
+                Box::new(Rectangle::new().width(22.0).height(22.0).align_child(Center, Center).child(icon(wifi::glyph(point.strength(), true), 15.0, glyph_color)))
                     as Box<dyn Widget>,
                 Box::new(
                     Column::new(children![
@@ -375,7 +379,7 @@ fn wifi_section(t: &Theme, network: &Network) -> (Box<dyn Widget>, f32) {
         let mut rows: Vec<Box<dyn Widget>> = Vec::new();
 
         for (index, point) in order(network.access_points()).into_iter().enumerate() {
-            rows.push(Box::new(network_row(t, index, point, &wifi, network.connecting())));
+            rows.push(Box::new(network_row(t, index, point, &wifi, network)));
 
             if wifi.prompt.as_deref() == Some(point.ssid()) {
                 rows.push(Box::new(password_row(t, wifi.password.chars().count())));

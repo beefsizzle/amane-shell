@@ -154,8 +154,10 @@ fn tiles(t: &Theme) -> Column {
     let notify = Notify::read();
 
     let (net_glyph, net_sub) = match network.link() {
+        amane::Link::Wired if !network.internet() => ("\u{f0200}", String::from("Wired \u{b7} No internet")),
         amane::Link::Wired => ("\u{f0200}", String::from("Wired")),
-        amane::Link::Wifi => ("\u{f1eb}", network.ssid().to_string()),
+        amane::Link::Wifi if !network.internet() => (crate::wifi::glyph(network.strength(), false), format!("{} \u{b7} No internet", network.ssid())),
+        amane::Link::Wifi => (crate::wifi::glyph(network.strength(), true), network.ssid().to_string()),
         amane::Link::Offline => ("\u{f05aa}", String::from("Offline")),
         _ => ("\u{f0200}", String::from("Connected")),
     };

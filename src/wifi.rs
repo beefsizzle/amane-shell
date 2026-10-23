@@ -33,14 +33,27 @@ impl Service for Wifi {
 
 pub const PASSWORD_FIELD: &str = "wifi-password";
 
-// the bar and panel glyph for a signal strength, 0 to 100
-pub fn glyph(strength: u8) -> &'static str {
-    match strength {
-        0..=19 => "\u{f092f}",  // outline, no bars
-        20..=44 => "\u{f091f}", // one bar
-        45..=69 => "\u{f0922}",
-        70..=84 => "\u{f0925}",
-        _ => "\u{f0928}", // full
+// the bar and panel glyph for a signal strength, 0 to 100, with a warning mark on a network without internet
+pub fn glyph(strength: u8, internet: bool) -> &'static str {
+    let bars = match strength {
+        0..=19 => 0,
+        20..=44 => 1,
+        45..=69 => 2,
+        70..=84 => 3,
+        _ => 4,
+    };
+
+    match (bars, internet) {
+        (0, true) => "\u{f092f}", // outline, no bars
+        (1, true) => "\u{f091f}",
+        (2, true) => "\u{f0922}",
+        (3, true) => "\u{f0925}",
+        (_, true) => "\u{f0928}", // full
+        (0, false) => "\u{f092b}",
+        (1, false) => "\u{f0920}",
+        (2, false) => "\u{f0923}",
+        (3, false) => "\u{f0926}",
+        (_, false) => "\u{f0929}",
     }
 }
 
@@ -260,10 +273,17 @@ mod tests {
 
     #[test]
     fn more_signal_draws_more_bars() {
-        assert_eq!(glyph(5), "\u{f092f}");
-        assert_eq!(glyph(30), "\u{f091f}");
-        assert_eq!(glyph(60), "\u{f0922}");
-        assert_eq!(glyph(80), "\u{f0925}");
-        assert_eq!(glyph(100), "\u{f0928}");
+        assert_eq!(glyph(5, true), "\u{f092f}");
+        assert_eq!(glyph(30, true), "\u{f091f}");
+        assert_eq!(glyph(60, true), "\u{f0922}");
+        assert_eq!(glyph(80, true), "\u{f0925}");
+        assert_eq!(glyph(100, true), "\u{f0928}");
+    }
+
+    #[test]
+    fn no_internet_keeps_the_bars_and_adds_a_warning() {
+        assert_eq!(glyph(5, false), "\u{f092b}");
+        assert_eq!(glyph(60, false), "\u{f0923}");
+        assert_eq!(glyph(100, false), "\u{f0929}");
     }
 }
