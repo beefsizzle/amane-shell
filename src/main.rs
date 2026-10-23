@@ -184,6 +184,9 @@ fn main() {
  * no `.thumbnail()` here on purpose: Amane keeps small copies for good, and the file is already a screen-sized copy
  * (see wallpapers.rs)
  */
+// under a quarter of one shade out of 255, so nothing shows
+const WAITING_OPACITY: f32 = 0.001;
+
 fn wallpaper_window(monitor: &amane::Monitor) -> LayerWindow {
     let (shown, incoming, fade, waiting) = {
         let wallpaper = wallpaper::Wallpaper::read();
@@ -214,7 +217,13 @@ fn wallpaper_window(monitor: &amane::Monitor) -> LayerWindow {
         Some(incoming) => {
             let under = if shown.is_empty() { base.fill(amane::Color::BLACK) } else { base.fill(Image::cover(&shown)) };
 
-            window.child(under.child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(fade)))
+            /*
+             * while it waits to start, the new picture is drawn too faint to see rather than not at all: Amane leaves
+             * out anything at no opacity, and the point of waiting is that this frame sends it to the gpu
+             */
+            let opacity = if waiting { WAITING_OPACITY } else { fade };
+
+            window.child(under.child(Rectangle::new().width(Parent).height(Parent).fill(Image::cover(incoming)).opacity(opacity)))
         }
         // the compositor draws it. the child only shows while the file is first decoding, and must not name the
         // picture itself, or the shell would decode its own copy again
