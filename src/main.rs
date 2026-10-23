@@ -1,4 +1,5 @@
 mod bar;
+mod battery;
 mod btpanel;
 mod btstate;
 mod cache;

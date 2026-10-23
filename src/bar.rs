@@ -1,6 +1,6 @@
 use amane::{
     Center, Column, End, Full, Layer, LayerWindow, Monitor, Parent, Rectangle, Row, Service, Start,
-    Vertical, Widget, Workspaces, Zone, Audio, Cpu, Link, Memory, Network, Notifications, children,
+    Vertical, Widget, Workspaces, Zone, Audio, Battery, Cpu, Link, Memory, Network, Notifications, children,
     Padding,
 };
 
@@ -40,7 +40,7 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
     // a Row places its children at the top, so the clock gets the same vertical centering as the sides
     let middle = Rectangle::new().width(clock_width()).height(Parent).align_child(Center, Center).child(clock(&t, &name));
 
-    let right = Row::new(children![
+    let mut chips: Vec<Box<dyn Widget>> = children![
         tray(&t, &name),
         cpu(&t),
         memory(&t),
@@ -49,10 +49,15 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
         clipboard(&t, &name),
         network(&t, &name),
         bell(&t, &name),
-        power(&t, &name),
-    ])
-    .gap(GAP)
-    .align(Center);
+    ];
+
+    if let Some(battery) = battery(&t) {
+        chips.push(Box::new(battery));
+    }
+
+    chips.push(Box::new(power(&t, &name)));
+
+    let right = Row::new(chips).gap(GAP).align(Center);
 
     let zones = Row::new(children![
         Rectangle::new()
@@ -328,6 +333,30 @@ fn bell(t: &Theme, name: &str) -> Rectangle {
     .on_click(toggle_on(name, Which::Notifications))
 }
 
+// the charge left, on a computer with a battery. a desktop has none, and no room is left for one
+fn battery(t: &Theme) -> Option<Rectangle> {
+    let battery = Battery::read();
+
+    if !battery.present() {
+        return None;
+    }
+
+    let (percent, charging, full) = (battery.percent(), battery.charging(), battery.full());
+
+    let low = percent <= crate::battery::LOW && !charging && !full;
+
+    let (glyph_color, text_color) = if low { (t.red, t.red) } else { (t.accent, t.fg) };
+
+    Some(chip(
+        "battery",
+        t,
+        STAT,
+        Row::new(children![icon(crate::battery::glyph(percent, charging, full), 13.0, glyph_color), label(format!("{percent}%"), 12.0, text_color)])
+            .gap(6.0)
+            .align(Center),
+    ))
+}
+
 fn power(t: &Theme, name: &str) -> Rectangle {
     chip("power", t, SQUARE, icon("\u{f011}", 13.0, t.red)).on_click(toggle_on(name, Which::Power))
 }
@@ -356,8 +385,12 @@ fn bell_width(count: usize) -> f32 {
 pub fn right_edge(slot: Slot) -> i32 {
     // the chips on the right in the order `view` puts them, last one first. the ones without a slot have no
     // dropdown of their own (the bell opens the notification center on the other side)
+    let battery = Battery::read().present();
+
     let from_the_right = [
         (Some(Slot::Power), SQUARE),
+        // only on a computer with a battery (see `battery`): without one, -GAP cancels the gap added below
+        (None, if battery { STAT } else { -GAP }),
         (None, bell_width(Notifications::read().list().len())),
         (Some(Slot::Network), SQUARE),
         (Some(Slot::Clipboard), SQUARE),
