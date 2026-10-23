@@ -93,14 +93,14 @@ pub fn view(monitor: &Monitor) -> LayerWindow {
 
     let (glyph, title) = match network.link() {
         Link::Wired => ("\u{f0200}", String::from("Wired connection")),
-        Link::Wifi => (wifi::glyph(network.strength(), network.internet()), format!("Wi-Fi \u{b7} {}", network.ssid())),
+        Link::Wifi => (wifi::glyph(network.strength(), wifi::internet(&network)), format!("Wi-Fi \u{b7} {}", network.ssid())),
         Link::Offline => ("\u{f05aa}", String::from("Offline")),
         _ => ("\u{f0200}", String::from("Connected")),
     };
 
     let mut subtitle = if info.interface.is_empty() { String::from("No active interface") } else { format!("{} \u{b7} {}", info.connection, info.interface) };
 
-    if network.connected() && !network.internet() {
+    if network.connected() && !wifi::internet(&network) {
         subtitle = format!("No internet \u{b7} {subtitle}");
     }
 
@@ -228,7 +228,17 @@ fn status(point: &AccessPoint, wifi: &Wifi, connecting: bool, internet: bool) ->
     }
 
     if let Some(failure) = wifi.failed.as_ref().filter(|failure| failure.ssid == ssid) {
-        return (String::from(if failure.wrong_password { "Wrong password, try again" } else { "Couldn\u{2019}t connect" }), false);
+        let text = match (failure.refused, failure.typed) {
+            (true, true) => "Wrong password, try again",
+            (true, false) => "Saved password refused, forget it to retry",
+            (false, _) => "Couldn\u{2019}t connect",
+        };
+
+        return (String::from(text), false);
+    }
+
+    if wifi::enterprise(point) && !point.saved() {
+        return (String::from("Needs a username, not supported here"), false);
     }
 
     let text = match (point.saved(), point.secured()) {
@@ -248,11 +258,14 @@ fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, networ
     let (active, saved, secured) = (point.active(), point.saved(), point.secured());
     let busy = wifi.joining.is_some();
 
-    let (text, lit) = status(point, wifi, network.connecting(), network.internet());
+    // an enterprise network needs a username the panel can't ask for, so only a profile made elsewhere joins it
+    let unsupported = wifi::enterprise(point) && !saved;
+
+    let (text, lit) = status(point, wifi, network.connecting(), wifi::internet(network));
 
     let action = if active {
         "Disconnect"
-    } else if busy {
+    } else if busy || unsupported {
         ""
     } else if saved || !secured {
         "Connect"
@@ -282,8 +295,8 @@ fn network_row(t: &Theme, index: usize, point: &AccessPoint, wifi: &Wifi, networ
         .on_click(move |_| {
             if active {
                 Network::disconnect();
-            } else if busy {
-                // one join at a time
+            } else if busy || unsupported {
+                // one join at a time, and none the panel can't finish
             } else if saved || !secured {
                 wifi::join(&ssid, None);
             } else {

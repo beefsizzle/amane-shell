@@ -1,6 +1,7 @@
+use std::sync::{Mutex, Once};
 use std::time::{Duration, Instant};
 
-use amane::{Network, Service, TextInput};
+use amane::{AccessPoint, Bus, Network, Service, TextInput};
 
 /*
  * the Wi-Fi part of the network dropdown: which network asks for its password, which one is being joined, and
@@ -18,7 +19,8 @@ pub struct Wifi {
 #[derive(Clone, PartialEq)]
 pub struct Failure {
     pub ssid: String,
-    pub wrong_password: bool, // a password typed in the panel, as opposed to a saved one that stopped working
+    pub refused: bool, // NetworkManager said the password was wrong, rather than the network not answering
+    pub typed: bool,   // the password was typed in the panel, as opposed to a saved one
 }
 
 impl Service for Wifi {
@@ -135,6 +137,8 @@ pub fn join(ssid: &str, password: Option<String>) {
 
     TextInput::set_text(PASSWORD_FIELD, "");
 
+    listen_for_failures();
+
     let typed = password.is_some();
 
     Network::connect(ssid, password.as_deref());
@@ -146,7 +150,7 @@ pub fn join(ssid: &str, password: Option<String>) {
 
 /// forgets a saved network, password and all
 pub fn forget(ssid: &str) {
-    Network::forget(ssid);
+    forget_profile(ssid);
 
     let mut wifi = Wifi::write();
 
@@ -167,12 +171,13 @@ const START_WITHIN: Duration = Duration::from_secs(10);
 const GIVE_UP_AFTER: Duration = Duration::from_secs(45);
 
 /*
- * where a join stands, from what `Network` shows: on the network and done joining is success, having been busy
- * joining and stopped without getting there is failure. the network that was up before (if any) is still
- * `current` until NetworkManager starts, so nothing counts before it's been seen busy, or the limit passed
+ * where a join stands, from what `Network` shows: the Wi-Fi card on the network (`joined`) and done joining is
+ * success, having been busy joining and stopped without getting there is failure. the network that was up before (if
+ * any) stays up until NetworkManager starts, so nothing counts before it's been seen busy, or the limit passed.
+ * `joined` is the card's own network, not `Network::ssid()`, which is empty while a cable carries the internet
  */
-fn step(target: &str, current: &str, connecting: bool, seen_connecting: bool, elapsed: Duration) -> Step {
-    if current == target && !connecting {
+fn step(joined: bool, connecting: bool, seen_connecting: bool, elapsed: Duration) -> Step {
+    if joined && !connecting {
         return Step::Joined;
     }
 
@@ -187,8 +192,11 @@ fn step(target: &str, current: &str, connecting: bool, seen_connecting: bool, el
     Step::Wait
 }
 
-// follows a join to its end. a password typed in the panel that didn't work leaves a profile with that password
-// behind, which would be tried again on the next click, so it's forgotten and the field opens again
+/*
+ * follows a join to its end. a password typed in the panel that NetworkManager refused leaves a profile with that
+ * password behind, which would be tried again on the next click, so it's forgotten and the field opens again. any
+ * other failure (out of range, no address) keeps the profile, and the next click tries again
+ */
 fn watch(ssid: String, typed: bool) {
     let started = Instant::now();
 
@@ -197,15 +205,17 @@ fn watch(ssid: String, typed: bool) {
     loop {
         std::thread::sleep(Duration::from_millis(400));
 
-        let (current, connecting) = {
+        let (joined, connecting) = {
             let network = Network::read();
 
-            (network.ssid().to_string(), network.connecting())
+            let joined = network.access_points().iter().any(|point| point.ssid() == ssid && point.active());
+
+            (joined, network.connecting())
         };
 
         seen_connecting |= connecting;
 
-        match step(&ssid, &current, connecting, seen_connecting, started.elapsed()) {
+        match step(joined, connecting, seen_connecting, started.elapsed()) {
             Step::Wait => continue,
             Step::Joined => {
                 Wifi::write().joining = None;
@@ -213,16 +223,20 @@ fn watch(ssid: String, typed: bool) {
                 return;
             }
             Step::Failed => {
-                if typed {
-                    Network::forget(&ssid);
+                let refused = failure_since(started).is_some_and(|reason| matches!(reason, NO_SECRETS | SUPPLICANT_DISCONNECT));
+
+                let retype = typed && refused;
+
+                if retype {
+                    forget_profile(&ssid);
                 }
 
                 let mut wifi = Wifi::write();
 
                 wifi.joining = None;
-                wifi.failed = Some(Failure { ssid: ssid.clone(), wrong_password: typed });
+                wifi.failed = Some(Failure { ssid: ssid.clone(), refused, typed });
 
-                if typed {
+                if retype {
                     wifi.prompt = Some(ssid);
                     wifi.password.clear();
 
@@ -237,6 +251,62 @@ fn watch(ssid: String, typed: bool) {
     }
 }
 
+// ---------------------------------------------------------------- why a join failed
+
+/*
+ * NetworkManager says why a device stopped joining only in the signal it sends as it gives up, so that's listened
+ * for from the first join on. a refused password ends as "no secrets" (it asks for a new password, and nobody is
+ * there to give one), or now and then as the supplicant dropping out of the handshake
+ */
+const FAILED: u32 = 120;
+const NO_SECRETS: u32 = 7;
+const SUPPLICANT_DISCONNECT: u32 = 8;
+
+// when a device last failed, and why
+static LAST_FAILURE: Mutex<Option<(Instant, u32)>> = Mutex::new(None);
+
+fn listen_for_failures() {
+    static STARTED: Once = Once::new();
+
+    STARTED.call_once(|| {
+        std::thread::spawn(|| {
+            for signal in Bus::system().signals("org.freedesktop.NetworkManager.Device", "StateChanged") {
+                // the new state, the old one, and the reason
+                let arguments = signal.arguments();
+
+                let (Some(state), Some(reason)) = (arguments.first(), arguments.get(2)) else { continue };
+
+                if state.number() as u32 == FAILED {
+                    *crate::sync::lock(&LAST_FAILURE) = Some((Instant::now(), reason.number() as u32));
+                }
+            }
+        });
+    });
+}
+
+fn failure_since(started: Instant) -> Option<u32> {
+    crate::sync::lock(&LAST_FAILURE).filter(|(at, _)| *at >= started).map(|(_, reason)| reason)
+}
+
+// ---------------------------------------------------------------- what the Amane fork adds
+
+// the upstream branch, built with stock Amane, has its own versions of these three
+
+/// connected and reaching the internet
+pub fn internet(network: &Network) -> bool {
+    network.internet()
+}
+
+/// deletes the saved profiles of a network, password and all
+pub fn forget_profile(ssid: &str) {
+    Network::forget(ssid);
+}
+
+/// a network that logs in with a username too (802.1X), which the panel can't join
+pub fn enterprise(point: &AccessPoint) -> bool {
+    point.enterprise()
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -247,28 +317,32 @@ mod tests {
 
     #[test]
     fn being_on_the_network_and_done_is_joined() {
-        assert_eq!(step("home", "home", false, true, SOON), Step::Joined);
+        assert_eq!(step(true, false, true, SOON), Step::Joined);
 
         // a saved network can come up between two looks
-        assert_eq!(step("home", "home", false, false, SOON), Step::Joined);
+        assert_eq!(step(true, false, false, SOON), Step::Joined);
+    }
+
+    #[test]
+    fn being_on_it_but_still_busy_is_not_done() {
+        assert_eq!(step(true, true, true, SOON), Step::Wait);
     }
 
     #[test]
     fn the_old_network_is_not_a_failure_before_networkmanager_starts() {
-        assert_eq!(step("cafe", "home", false, false, SOON), Step::Wait);
-        assert_eq!(step("cafe", "home", true, true, SOON), Step::Wait);
+        assert_eq!(step(false, false, false, SOON), Step::Wait);
+        assert_eq!(step(false, true, true, SOON), Step::Wait);
     }
 
     #[test]
     fn stopping_without_getting_there_is_a_failure() {
-        assert_eq!(step("cafe", "", false, true, SOON), Step::Failed);
-        assert_eq!(step("cafe", "home", false, true, SOON), Step::Failed);
+        assert_eq!(step(false, false, true, SOON), Step::Failed);
     }
 
     #[test]
     fn a_join_that_never_starts_or_never_ends_gives_up() {
-        assert_eq!(step("cafe", "home", false, false, Duration::from_secs(11)), Step::Failed);
-        assert_eq!(step("cafe", "", true, true, Duration::from_secs(46)), Step::Failed);
+        assert_eq!(step(false, false, false, Duration::from_secs(11)), Step::Failed);
+        assert_eq!(step(false, true, true, Duration::from_secs(46)), Step::Failed);
     }
 
     #[test]
