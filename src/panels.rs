@@ -257,6 +257,7 @@ pub fn changed(before: &[bool; COUNT], after: &[bool; COUNT]) {
     if !before[network] && after[network] {
         crate::sys::refresh();
         crate::netinfo::refresh();
+        crate::wifi::opened();
     }
 }
 

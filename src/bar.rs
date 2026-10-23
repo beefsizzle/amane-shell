@@ -1,6 +1,6 @@
 use amane::{
     Center, Column, End, Full, Layer, LayerWindow, Monitor, Parent, Rectangle, Row, Service, Start,
-    Vertical, Widget, Workspaces, Zone, Audio, Cpu, Memory, Network, Notifications, children,
+    Vertical, Widget, Workspaces, Zone, Audio, Cpu, Link, Memory, Network, Notifications, children,
     Padding,
 };
 
@@ -297,9 +297,17 @@ fn clipboard(t: &Theme, name: &str) -> Rectangle {
 fn network(t: &Theme, name: &str) -> Rectangle {
     let network = Network::read();
 
-    let glyph = if network.connected() { "\u{f0200}" } else { "\u{f05aa}" };
+    // on Wi-Fi the bars follow the signal, with a warning mark while the network doesn't reach the internet, and an
+    // empty outline means a network is being joined
+    let (glyph, color) = match network.link() {
+        Link::Wifi => (crate::wifi::glyph(network.strength(), crate::wifi::internet(&network)), if crate::wifi::internet(&network) { t.accent } else { t.dim }),
+        Link::Offline if network.connecting() => ("\u{f092f}", t.dim),
+        Link::Offline if !network.wifi_enabled() => ("\u{f092e}", t.faint),
+        Link::Offline => ("\u{f05aa}", t.faint),
+        _ => ("\u{f0200}", if crate::wifi::internet(&network) { t.accent } else { t.dim }),
+    };
 
-    chip("network", t, SQUARE, icon(glyph, 14.0, if network.connected() { t.accent } else { t.faint }))
+    chip("network", t, SQUARE, icon(glyph, 14.0, color))
         .on_click(toggle_on(name, Which::Network))
 }
 
