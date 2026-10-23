@@ -265,8 +265,9 @@ pub fn make_blurred(path: &str) -> Option<String> {
 
     let blurred = cache("blurred", path);
 
-    // decoded at twice the size it's blurred at, and enlarged only to 1280: the login screen scales a blur up seamlessly
-    convert(&display, &blurred, (960, 540), "-resize 480x -blur 0x8 -resize 1280x -quality 90").then_some(blurred)
+    // decoded at twice the size it's blurred at, and enlarged only to 1280: the login screen scales a blur up seamlessly.
+    // on one thread, since nothing waits for it
+    convert(&display, &blurred, (960, 540), "-limit thread 1 -resize 480x -blur 0x8 -resize 1280x -quality 90").then_some(blurred)
 }
 
 fn make_thumbnail(path: &str) -> Option<String> {

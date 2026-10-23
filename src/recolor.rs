@@ -556,6 +556,18 @@ fn login_screen(c: &Colors) {
         return;
     }
 
+    /*
+     * it's only seen at the next logout, so the blur below waits for the wallpaper's fade to finish rather than
+     * taking the cores the fade is drawn with. a fade takes under half a second; this gives up waiting after two
+     */
+    for _ in 0..40 {
+        if crate::wallpaper::Wallpaper::read().incoming.is_none() {
+            break;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
     let chosen = crate::wallpaper::Wallpaper::read().path.clone();
 
     let picture = folder.join("wallpaper.jpg");
