@@ -17,6 +17,7 @@ pub struct Netinfo {
     pub mac: String,
     pub speed: String, // negotiated link speed of a wired port
     pub ping: Option<f32>, // milliseconds to the gateway
+    pub has_wifi: bool,    // the machine has a Wi-Fi device, whether it's in use or not
 }
 
 // runs a program with arguments and returns what it printed. no shell: an interface name or a gateway address is
@@ -63,7 +64,10 @@ fn speed_text(interface: &str) -> String {
 fn read() -> Netinfo {
     let interface = default_interface();
 
-    let mut info = Netinfo { interface: interface.clone(), ..Netinfo::default() };
+    // "wifi", "ethernet", "loopback", one device per line
+    let has_wifi = run("nmcli", &["-t", "-f", "TYPE", "device"]).lines().any(|kind| kind == "wifi");
+
+    let mut info = Netinfo { interface: interface.clone(), has_wifi, ..Netinfo::default() };
 
     if interface.is_empty() {
         return info;
@@ -158,6 +162,11 @@ impl Service for Netinfo {
                 let output = run("ping", &["-c1", "-W1", &fresh.gateway]);
 
                 fresh.ping = output.split("time=").nth(1).and_then(|rest| rest.split_whitespace().next()).and_then(|number| number.parse().ok());
+            }
+
+            // NetworkManager scans by itself now and then, a dropdown left open looks again every fifteen seconds
+            if fresh.has_wifi && round.is_multiple_of(5) {
+                amane::Network::scan();
             }
 
             if fresh != previous {

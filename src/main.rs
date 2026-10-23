@@ -28,6 +28,7 @@ mod ui;
 mod wallpaper;
 mod wallpapers;
 mod weather;
+mod wifi;
 
 use amane::{App, Layer, LayerWindow, Palette, Parent, Rectangle, Zone, Image, Service};
 
