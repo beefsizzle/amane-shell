@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
-use amane::{Argument, Bus, Color, Value};
+use amane::{Argument, Bus, Color, Service, Value};
 
 use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
 
@@ -21,6 +21,9 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
  *               open ones are told the palette changed, as Plasma does, and recolour at once
  *     strata    ~/.config/strata/themes/daru.toml, a theme called "Daru" for the Strata file manager, which reloads it
  *               by itself
+ *     sddm      /var/lib/daru-sddm, the wallpaper and its colours for the login screen (sddm/ in this repository). the
+ *               greeter runs as its own user and can't read the home folder, so they're copied to a folder that
+ *               sddm/install.sh makes once, with sudo. nothing is written until it exists
  */
 #[derive(Clone, Copy, PartialEq)]
 enum App {
@@ -30,6 +33,7 @@ enum App {
     Zed,
     Kde,
     Strata,
+    Sddm,
 }
 
 // one export at a time: two wallpaper changes in quick succession must not interleave their writes
@@ -47,6 +51,7 @@ fn wanted() -> Vec<App> {
             "zed" => Some(App::Zed),
             "kde" => Some(App::Kde),
             "strata" => Some(App::Strata),
+            "sddm" => Some(App::Sddm),
             _ => None,
         })
         .collect()
@@ -111,6 +116,9 @@ pub fn export() {
                 }
                 App::Strata => {
                     write(&config("strata/themes/daru.toml"), &strata(&colors));
+                }
+                App::Sddm => {
+                    login_screen(&colors);
                 }
             }
         }
@@ -536,6 +544,68 @@ fn strata(c: &Colors) -> String {
     text
 }
 
+// where the login screen reads from. made by sddm/install.sh, owned by the user and readable by SDDM's greeter
+const SDDM_DIR: &str = "/var/lib/daru-sddm";
+
+// the wallpaper, blurred, and the colours, for the login screen to show on the next boot or logout
+fn login_screen(c: &Colors) {
+    let folder = Path::new(SDDM_DIR);
+
+    // not set up on this machine
+    if !folder.is_dir() {
+        return;
+    }
+
+    let chosen = crate::wallpaper::Wallpaper::read().path.clone();
+
+    let picture = folder.join("wallpaper.jpg");
+
+    let copied = crate::wallpapers::make_blurred(&chosen).is_some_and(|blurred| copy(Path::new(&blurred), &picture));
+
+    // the previous wallpaper stays when this one has no copy yet, the colours always follow
+    let shown = (copied || picture.is_file()).then_some(picture.as_path());
+
+    write(&folder.join("theme.conf.user"), &sddm(c, shown));
+}
+
+// copied under another name and renamed, like `write`, and only when it changed
+fn copy(from: &Path, to: &Path) -> bool {
+    let Ok(new) = std::fs::read(from) else { return false };
+
+    if std::fs::read(to).is_ok_and(|current| current == new) {
+        return true;
+    }
+
+    let partial = to.with_extension("daru-part");
+
+    std::fs::write(&partial, &new).is_ok() && std::fs::rename(&partial, to).is_ok()
+}
+
+// the keys sddm/Main.qml reads. colours are quoted, or the # would start a comment
+fn sddm(c: &Colors, wallpaper: Option<&Path>) -> String {
+    let lines = [
+        ("backgroundColor", c.background),
+        ("surface", c.surface),
+        ("border", c.border),
+        ("text", c.text),
+        ("dim", c.dim),
+        ("faint", c.faint),
+        ("accent", c.accent),
+        ("onAccent", c.on_accent),
+        ("danger", c.red),
+    ];
+
+    let mut text = format!("# {HEADER}\n\n[General]\n");
+
+    text.push_str(&format!("background={}\n", wallpaper.map(|path| path.display().to_string()).unwrap_or_default()));
+
+    for (key, color) in lines {
+        text.push_str(&format!("{key}=\"{}\"\n", hex(color)));
+    }
+
+    text
+}
+
 fn zed(c: &Colors) -> String {
     let h = |color: Color| hex(color);
 
@@ -731,6 +801,31 @@ mod tests {
 
             assert!(value.len() == 7 && value.starts_with('#'), "{line}");
         }
+    }
+
+    #[test]
+    fn the_login_screen_gets_every_colour_main_qml_reads() {
+        let colors = super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c)));
+
+        let conf = super::sddm(&colors, Some(std::path::Path::new("/var/lib/daru-sddm/wallpaper.jpg")));
+
+        assert!(conf.contains("[General]\n"));
+        assert!(conf.contains("background=/var/lib/daru-sddm/wallpaper.jpg\n"));
+
+        // quoted, or QSettings would read the # as the start of a comment
+        for key in ["backgroundColor", "surface", "border", "text", "dim", "faint", "accent", "onAccent", "danger"] {
+            let line = conf.lines().find(|line| line.starts_with(&format!("{key}="))).unwrap_or_else(|| panic!("no {key}"));
+            let value = line.split_once('=').unwrap().1;
+
+            assert!(value.len() == 9 && value.starts_with("\"#") && value.ends_with('"'), "{line}");
+        }
+    }
+
+    #[test]
+    fn without_a_wallpaper_the_login_screen_shows_the_background_colour() {
+        let colors = super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c)));
+
+        assert!(super::sddm(&colors, None).contains("\nbackground=\n"));
     }
 
     #[test]

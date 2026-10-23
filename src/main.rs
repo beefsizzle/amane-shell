@@ -88,6 +88,12 @@ fn main() {
         .font(TEXT_FONT)
         .ipc("toggle", panels::ipc)
         .ipc("wallpaper", wallpaper::ipc)
+        // `amane ipc call recolor` writes the colours for other apps again, after one was set up (sddm/install.sh)
+        .ipc("recolor", |_| {
+            recolor::export();
+
+            String::from("ok")
+        })
         // `amane ipc call launcher-grid [n]` opens the launcher on the all-apps grid, with the nth app chosen
         .ipc("launcher-grid", |arguments| {
             panels::show_here(panels::Which::Launcher);

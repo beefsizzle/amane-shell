@@ -75,6 +75,21 @@ The shell can write the wallpaper colours for other apps, live where the app all
 | `zed` | `~/.config/zed/themes/daru.json` | pick the "Daru" theme |
 | `kde` (Dolphin, Qt apps) | `~/.local/share/color-schemes/Daru.colors`, and the colours in `~/.config/kdeglobals` (live) | install `plasma-integration` and set `QT_QPA_PLATFORMTHEME=kde` |
 | `strata` ([Strata](https://github.com/lgse/strata)) | `~/.config/strata/themes/daru.toml` (live) | pick the "Daru" theme |
+| `sddm` (login screen) | the wallpaper and colours in `/var/lib/daru-sddm` | run `sudo sddm/install.sh` once (below) |
+
+## Login screen
+
+`sddm/` is the lock screen as an [SDDM](https://github.com/sddm/sddm) theme, showing the wallpaper and colours you
+last had. SDDM's greeter runs as its own user and can't read your home folder, so the shell copies them to
+`/var/lib/daru-sddm` when the wallpaper changes. Set it up once per machine:
+
+```sh
+sudo sddm/install.sh
+echo sddm >> ~/.config/amane-shell/recolor
+```
+
+then pick a wallpaper. To look at it without logging out: `sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/daru`.
+`sudo sddm/install.sh --remove` puts the previous theme back.
 
 ## Config
 
@@ -88,6 +103,7 @@ In `~/.config/amane-shell/`:
 ```
 amane ipc call toggle dashboard|calendar|notifications|wallpapers|launcher|power|network|audio|bluetooth|clipboard|all|close
 amane ipc call wallpaper <path>
+amane ipc call recolor
 amane ipc call lock
 amane ipc call sleep
 ```

@@ -160,7 +160,7 @@ fn sweep_orphans() {
 
     files.push(Wallpaper::read().path.clone());
 
-    for folder in ["thumbs", "display"] {
+    for folder in ["thumbs", "display", "blurred"] {
         let expected: std::collections::HashSet<std::ffi::OsString> =
             files.iter().filter_map(|path| std::path::Path::new(&cache(folder, path)).file_name().map(std::ffi::OsStr::to_os_string)).collect();
 
@@ -181,7 +181,7 @@ fn sweep_orphans() {
 
 // conversions that were cut short by a restart leave `.part` files behind
 fn sweep_partials() {
-    for folder in ["thumbs", "display"] {
+    for folder in ["thumbs", "display", "blurred"] {
         let Some(directory) = std::path::Path::new(&cache(folder, "")).parent().map(std::path::Path::to_path_buf) else { continue };
         let Ok(entries) = std::fs::read_dir(directory) else { continue };
 
@@ -201,6 +201,19 @@ pub fn make_display(path: &str) -> Option<String> {
     let display = display_path(path);
 
     convert(path, &display, &options).then_some(display)
+}
+
+/*
+ * the login screen's background (see recolor::login_screen), blurred like the lock screen, made from the screen-sized
+ * copy and only for the wallpaper in use. a small copy blurred and enlarged again is as soft as a big blur over the
+ * whole picture and far quicker, and enlarging a blur shows no pixels. none until the screen-sized copy exists
+ */
+pub fn make_blurred(path: &str) -> Option<String> {
+    let display = display_if_ready(path)?;
+
+    let blurred = cache("blurred", path);
+
+    convert(&display, &blurred, "-resize 480x -blur 0x8 -resize 1920x -quality 90").then_some(blurred)
 }
 
 fn make_thumbnail(path: &str) -> Option<String> {
