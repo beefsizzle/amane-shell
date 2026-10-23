@@ -4,6 +4,9 @@ A desktop shell for [niri](https://github.com/YaLTeR/niri), built with [Amane](h
 dashboard, launcher, notifications, calendar and weather, wallpaper picker, and sound, Bluetooth, network, clipboard and
 power dropdowns. Colours follow the wallpaper.
 
+> This `upstream` branch is a snapshot from October 2026 that builds with upstream Amane. It won't get new features or
+> fixes, those go to [`main`](https://github.com/beefsizzle/daru). Use it as a starting point, or borrow what you like.
+
 ![screenshot](media/screenshot.jpg)
 
 
@@ -22,7 +25,8 @@ https://github.com/user-attachments/assets/a843d4c3-b076-4d88-abff-8120f4c5d30a
 - niri
 - the [Amane](https://github.com/MystiaFin/amane) CLI. This `upstream` branch builds with upstream Amane, and does without
   what the [`main`](https://github.com/beefsizzle/daru) branch gets from [my fork](https://github.com/beefsizzle/amane):
-  fingerprint unlock, a wallpaper drawn by the compositor, and lower GPU memory
+  fingerprint unlock, a wallpaper drawn by the compositor, lower GPU memory, and telling a network without internet
+  apart
 - Adwaita Sans, JetBrainsMono Nerd Font
 - ImageMagick, wl-clipboard, cliphist, `pactl` (PipeWire or PulseAudio), NetworkManager, BlueZ, curl, jq
 
