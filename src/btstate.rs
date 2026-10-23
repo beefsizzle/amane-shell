@@ -205,9 +205,44 @@ pub fn disconnect(path: &str) {
     device_calls(path, &["Disconnect"]);
 }
 
-// pairs, then connects; only for devices that pair without a code
+/*
+ * pairs, trusts and connects; only for devices that pair without a code.
+ *
+ * BlueZ only keeps a pairing's keys (a bond) while the adapter is pairable, which it often isn't with no other
+ * Bluetooth tool running, and it refuses input from an input device that isn't bonded: a game controller would say
+ * connected and light up, but never become a controller. so the adapter is pairable for the pairing, and set back
+ * after. trusting lets the device connect by itself later, like a controller woken by its button
+ */
 pub fn pair(path: &str) {
-    device_calls(path, &["Pair", "Connect"]);
+    let device = path.to_string();
+
+    std::thread::spawn(move || {
+        let Some(adapter) = adapter() else { return };
+
+        let bus = Bus::system();
+
+        let was_pairable = bus.property(BLUEZ, &adapter, ADAPTER, "Pairable").bool();
+
+        if !was_pairable {
+            bus.set_property(BLUEZ, &adapter, ADAPTER, "Pairable", Argument::from(true));
+        }
+
+        bus.call(BLUEZ, &device, DEVICE, "Pair", &[]);
+
+        if !was_pairable {
+            bus.set_property(BLUEZ, &adapter, ADAPTER, "Pairable", Argument::from(false));
+        }
+
+        if bus.property(BLUEZ, &device, DEVICE, "Paired").bool() {
+            bus.set_property(BLUEZ, &device, DEVICE, "Trusted", Argument::from(true));
+        }
+
+        publish(read_state());
+
+        bus.call(BLUEZ, &device, DEVICE, "Connect", &[]);
+
+        publish(read_state());
+    });
 }
 
 // unpairs and removes the device, it comes back only after a new scan
