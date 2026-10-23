@@ -177,6 +177,9 @@ fn main() {
         .run();
 }
 
+// how strongly a wallpaper waiting for its fade is drawn: under a quarter of one shade out of 255, so nothing shows
+const WAITING_OPACITY: f32 = 0.001;
+
 /*
  * the wallpaper is drawn by the compositor (LayerWindow::picture): one buffer in shared memory for every monitor,
  * and no gpu memory of the shell's own. that was about 170 MB of swapchains and textures for two monitors. only while
@@ -184,9 +187,6 @@ fn main() {
  * no `.thumbnail()` here on purpose: Amane keeps small copies for good, and the file is already a screen-sized copy
  * (see wallpapers.rs)
  */
-// under a quarter of one shade out of 255, so nothing shows
-const WAITING_OPACITY: f32 = 0.001;
-
 fn wallpaper_window(monitor: &amane::Monitor) -> LayerWindow {
     let (shown, incoming, fade, waiting) = {
         let wallpaper = wallpaper::Wallpaper::read();
