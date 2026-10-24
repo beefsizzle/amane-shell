@@ -64,7 +64,7 @@ Blur behind the bar and panels: add [`dev/niri-layer-rules.kdl`](dev/niri-layer-
 
 ## Umbriel
 
-It runs on [Umbriel](https://docs.noctalia.dev/umbriel/) too. Screenshots there need `grim` and `slurp`. In
+It runs on [Umbriel](https://docs.noctalia.dev/umbriel/) too. Screenshots there need `grim` and `slurp`, and `satty` to draw on one. In
 `~/.config/umbriel/config.toml`:
 
 ```toml
@@ -74,6 +74,7 @@ autostart = ["amane run"]
 [keybinds]
 "Mod+Space" = "spawn:amane ipc call toggle launcher"
 "Mod+Alt+L" = "spawn:amane ipc call lock"
+"Print" = "spawn:amane ipc call screenshot region"
 
 [[layer_rule]]
 match.namespace = "^amane-(bar|panel|dock)$"
@@ -123,6 +124,7 @@ In `~/.config/amane-shell/`:
 ```
 amane ipc call toggle dashboard|calendar|notifications|wallpapers|launcher|power|network|audio|bluetooth|clipboard|all|close
 amane ipc call wallpaper <path>
+amane ipc call screenshot region|screen|annotate
 amane ipc call recolor
 amane ipc call lock
 amane ipc call sleep

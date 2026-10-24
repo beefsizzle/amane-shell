@@ -96,6 +96,16 @@ fn main() {
 
             String::from("ok")
         })
+        // `amane ipc call screenshot region|screen|annotate`, for the compositor's keybinds (see compositor.rs)
+        .ipc("screenshot", |arguments| {
+            let Some(shot) = arguments.first().and_then(|name| compositor::Shot::parse(name)) else {
+                return String::from("usage: screenshot region|screen|annotate");
+            };
+
+            amane::spawn(&compositor::screenshot(shot));
+
+            String::from("ok")
+        })
         // `amane ipc call launcher-grid [n]` opens the launcher on the all-apps grid, with the nth app chosen
         .ipc("launcher-grid", |arguments| {
             panels::show_here(panels::Which::Launcher);

@@ -28,16 +28,60 @@ pub fn log_out() -> &'static str {
     }
 }
 
+/// what `amane ipc call screenshot region|screen|annotate` takes
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shot {
+    Region,   // a region you drag out
+    Screen,   // the monitor in focus
+    Annotate, // a region, opened in satty to draw on first
+}
+
+impl Shot {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "region" => Some(Self::Region),
+            "screen" => Some(Self::Screen),
+            "annotate" => Some(Self::Annotate),
+            _ => None,
+        }
+    }
+}
+
+// where every screenshot goes, as niri saves them
+const SAVE: &str = "folder=\"$HOME/Pictures/Screenshots\"; mkdir -p \"$folder\"; \
+                    file=\"$folder/Screenshot from $(date '+%Y-%m-%d %H-%M-%S').png\"";
+
+// copied, and a notification with the picture in it, as niri does
+const DONE: &str = "wl-copy --type image/png < \"$file\" && \
+                    notify-send --app-name=Screenshot --icon=\"$file\" \"Screenshot taken\" \"Saved in Pictures/Screenshots and copied\"";
+
 /*
- * a screenshot of a region you drag out. niri has its own; elsewhere it's grim and slurp, saved where niri saves
- * them and copied to the clipboard like niri does. a cancelled drag saves nothing
+ * the command for a screenshot. niri takes its own, which save, copy and notify by themselves; elsewhere it's grim and
+ * slurp doing the same, and satty for drawing on one. a cancelled drag does nothing
  */
-pub fn screenshot_region() -> &'static str {
-    match running() {
-        Compositor::Niri => "niri msg action screenshot",
-        _ => "region=\"$(slurp)\" || exit; \
-              folder=\"$HOME/Pictures/Screenshots\"; mkdir -p \"$folder\"; \
-              file=\"$folder/Screenshot from $(date '+%Y-%m-%d %H-%M-%S').png\"; \
-              grim -g \"$region\" \"$file\" && wl-copy --type image/png < \"$file\"",
+pub fn screenshot(shot: Shot) -> String {
+    match (running(), shot) {
+        (Compositor::Niri, Shot::Region) => String::from("niri msg action screenshot"),
+        (Compositor::Niri, Shot::Screen) => String::from("niri msg action screenshot-screen"),
+        (_, Shot::Region) => format!("region=\"$(slurp)\" || exit; {SAVE}; grim -g \"$region\" \"$file\" && {DONE}"),
+        (Compositor::Umbriel, Shot::Screen) => {
+            format!("output=\"$(umbriel outputs --json | jq -r '.[] | select(.focused) | .name')\"; {SAVE}; grim -o \"$output\" \"$file\" && {DONE}")
+        }
+        (_, Shot::Screen) => format!("{SAVE}; grim \"$file\" && {DONE}"),
+        // satty saves, copies and notifies by itself (see ~/.config/satty/config.toml)
+        (_, Shot::Annotate) => String::from("region=\"$(slurp)\" || exit; grim -g \"$region\" - | satty --filename -"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Shot;
+
+    #[test]
+    fn shots_by_name() {
+        assert_eq!(Shot::parse("region"), Some(Shot::Region));
+        assert_eq!(Shot::parse("screen"), Some(Shot::Screen));
+        assert_eq!(Shot::parse("annotate"), Some(Shot::Annotate));
+        assert_eq!(Shot::parse("window"), None);
     }
 }

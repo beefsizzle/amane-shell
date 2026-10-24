@@ -220,7 +220,7 @@ fn tiles(t: &Theme) -> Column {
             panels::close();
 
             // a moment for the dashboard to close first, so it isn't in the picture
-            amane::spawn(&format!("sleep 0.3; {}", crate::compositor::screenshot_region()));
+            amane::spawn(&format!("sleep 0.3; {}", crate::compositor::screenshot(crate::compositor::Shot::Region)));
         }),
     ])
     .gap(10.0);
