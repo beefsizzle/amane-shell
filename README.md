@@ -75,6 +75,7 @@ The shell can write the wallpaper colours for other apps, live where the app all
 | `zed` | `~/.config/zed/themes/daru.json` | pick the "Daru" theme |
 | `kde` (Dolphin, Qt apps) | `~/.local/share/color-schemes/Daru.colors`, and the colours in `~/.config/kdeglobals` (live) | install `plasma-integration` and set `QT_QPA_PLATFORMTHEME=kde` |
 | `strata` ([Strata](https://github.com/lgse/strata)) | `~/.config/strata/themes/daru.toml` (live) | pick the "Daru" theme |
+| `btop` | `~/.config/btop/themes/daru.theme` (live) | `color_theme = "daru"` in `~/.config/btop/btop.conf` |
 | `sddm` (login screen) | the wallpaper and colours in `/var/lib/daru-sddm` | run `sudo sddm/install.sh` once (below) |
 
 ## Login screen

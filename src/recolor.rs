@@ -21,6 +21,8 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
  *               open ones are told the palette changed, as Plasma does, and recolour at once
  *     strata    ~/.config/strata/themes/daru.toml, a theme called "Daru" for the Strata file manager, which reloads it
  *               by itself
+ *     btop      ~/.config/btop/themes/daru.theme, for btop, which is told to read its config again (SIGUSR2) and picks up
+ *               the new colours at once
  *     sddm      /var/lib/daru-sddm, the wallpaper and its colours for the login screen (sddm/ in this repository). the
  *               greeter runs as its own user and can't read the home folder, so they're copied to a folder that
  *               sddm/install.sh makes once, with sudo. nothing is written until it exists
@@ -33,6 +35,7 @@ enum App {
     Zed,
     Kde,
     Strata,
+    Btop,
     Sddm,
 }
 
@@ -51,6 +54,7 @@ fn wanted() -> Vec<App> {
             "zed" => Some(App::Zed),
             "kde" => Some(App::Kde),
             "strata" => Some(App::Strata),
+            "btop" => Some(App::Btop),
             "sddm" => Some(App::Sddm),
             _ => None,
         })
@@ -116,6 +120,11 @@ pub fn export() {
                 }
                 App::Strata => {
                     write(&config("strata/themes/daru.toml"), &strata(&colors));
+                }
+                App::Btop => {
+                    if write(&config("btop/themes/daru.theme"), &btop(&colors)) {
+                        reload_btop();
+                    }
                 }
                 App::Sddm => {
                     login_screen(&colors);
@@ -618,6 +627,75 @@ fn sddm(c: &Colors, wallpaper: Option<&Path>) -> String {
     text
 }
 
+/*
+ * btop's colours: quiet box lines, the accent for what's highlighted, and graphs that go from calm to the warning
+ * colours as they fill. each gradient starts close to the background, so an idle graph stays out of the way
+ */
+fn btop(c: &Colors) -> String {
+    let rise = |color: Color| [mix(c.background, color, 0.4), mix(c.background, color, 0.7), color];
+    let heat = [c.accent, c.yellow, c.red];
+
+    let solid = [
+        ("main_bg", c.background),
+        ("main_fg", c.text),
+        ("title", c.text),
+        ("hi_fg", c.accent),
+        ("selected_bg", mix(c.background, c.accent, 0.35)),
+        ("selected_fg", c.text),
+        ("inactive_fg", c.faint),
+        ("graph_text", c.dim),
+        ("meter_bg", c.raised),
+        ("proc_misc", c.accent),
+        ("cpu_box", c.faint),
+        ("mem_box", c.faint),
+        ("net_box", c.faint),
+        ("proc_box", c.faint),
+        ("div_line", c.border),
+        ("followed_bg", mix(c.background, c.accent, 0.35)),
+        ("followed_fg", c.text),
+        ("proc_follow_bg", mix(c.background, c.accent, 0.35)),
+        ("proc_pause_bg", c.red),
+        ("proc_banner_bg", c.raised),
+        ("proc_banner_fg", c.text),
+    ];
+
+    let mut lines: Vec<(String, Color)> = solid.into_iter().map(|(key, color)| (key.to_string(), color)).collect();
+
+    for (name, stops) in [
+        ("temp", heat),
+        ("cpu", heat),
+        ("free", rise(c.green)),
+        ("cached", rise(c.blue)),
+        ("available", rise(c.purple)),
+        ("used", [c.yellow, c.orange, c.red]),
+        ("download", rise(c.accent)),
+        ("upload", rise(c.purple)),
+        ("process", heat),
+    ] {
+        for (step, color) in ["start", "mid", "end"].into_iter().zip(stops) {
+            lines.push((format!("{name}_{step}"), color));
+        }
+    }
+
+    let mut text = format!("# {HEADER}\n\n");
+
+    for (key, color) in lines {
+        text.push_str(&format!("theme[{key}]=\"{}\"\n", hex(color)));
+    }
+
+    text
+}
+
+// btop reads its config and theme again on SIGUSR2. nothing happens when it isn't running
+fn reload_btop() {
+    let _ = Command::new("pkill")
+        .args(["-USR2", "-x", "btop"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 fn zed(c: &Colors) -> String {
     let h = |color: Color| hex(color);
 
@@ -838,6 +916,23 @@ mod tests {
         let colors = super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c)));
 
         assert!(super::sddm(&colors, None).contains("\nbackground=\n"));
+    }
+
+    #[test]
+    fn the_btop_theme_sets_every_colour_and_gradient() {
+        let colors = super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c)));
+
+        let theme = super::btop(&colors);
+
+        for key in ["main_bg", "main_fg", "hi_fg", "selected_bg", "div_line", "proc_banner_fg", "cpu_start", "cpu_mid", "cpu_end", "used_end", "process_start"] {
+            let line = theme.lines().find(|line| line.starts_with(&format!("theme[{key}]="))).unwrap_or_else(|| panic!("no {key}"));
+            let value = line.split_once('=').unwrap().1;
+
+            assert!(value.len() == 9 && value.starts_with("\"#") && value.ends_with('"'), "{line}");
+        }
+
+        // 21 plain colours and nine gradients of three
+        assert_eq!(theme.lines().filter(|line| line.starts_with("theme[")).count(), 21 + 27);
     }
 
     #[test]
