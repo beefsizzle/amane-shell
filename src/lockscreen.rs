@@ -26,6 +26,8 @@ pub fn view(_: &Monitor) -> LayerWindow {
         ("Checking\u{2026}", t.dim)
     } else if lock.failed() {
         ("Wrong password, try again", t.red)
+    } else if fingerprint == Fingerprint::TooManyTries {
+        ("Too many attempts, use your password", t.red)
     } else if fingerprint == Fingerprint::NoMatch {
         ("Fingerprint not recognised, try again", t.red)
     } else if fingerprint == Fingerprint::Retry {
