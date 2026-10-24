@@ -14,6 +14,8 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
  *     gtk       ~/.config/gtk-4.0/daru.css, for GTK4 and libadwaita apps when they next start, and GNOME's accent
  *               setting, which libadwaita apps follow at once, even ones already open
  *     niri      ~/.config/niri/daru-colors.kdl, the focus ring. niri reloads it by itself
+ *     umbriel   ~/.config/umbriel/daru-colors.toml, the window borders, for `[include.optional] files =
+ *               ["daru-colors.toml"]` in Umbriel's config. Umbriel is asked to reload
  *     ghostty   ~/.config/ghostty/daru-colors, background, text, cursor and selection. Ghostty is asked to reload
  *     zed       ~/.config/zed/themes/daru.json, a theme called "Daru". Zed reloads it by itself
  *     kde       ~/.local/share/color-schemes/Daru.colors, a colour scheme for KDE apps like Dolphin, and the same colours
@@ -31,6 +33,7 @@ use crate::theme::{Theme, hex, mix, over, signal, theme, to_hsl};
 enum App {
     Gtk,
     Niri,
+    Umbriel,
     Ghostty,
     Zed,
     Kde,
@@ -50,6 +53,7 @@ fn wanted() -> Vec<App> {
         .filter_map(|name| match name {
             "gtk" => Some(App::Gtk),
             "niri" => Some(App::Niri),
+            "umbriel" => Some(App::Umbriel),
             "ghostty" => Some(App::Ghostty),
             "zed" => Some(App::Zed),
             "kde" => Some(App::Kde),
@@ -89,6 +93,11 @@ pub fn export() {
                 }
                 App::Niri => {
                     write(&config("niri/daru-colors.kdl"), &niri(&colors));
+                }
+                App::Umbriel => {
+                    if write(&config("umbriel/daru-colors.toml"), &umbriel(&colors)) {
+                        reload_umbriel();
+                    }
                 }
                 App::Ghostty => {
                     if write(&config("ghostty/daru-colors"), &ghostty(&colors)) {
@@ -316,6 +325,30 @@ fn niri(c: &Colors) -> String {
         hex(c.accent),
         hex(c.raised),
     )
+}
+
+// the window borders, as niri's focus ring: the accent on the focused window. colours as "#rrggbbaa"
+fn umbriel(c: &Colors) -> String {
+    format!(
+        "# {HEADER}\n\n[colors.border]\nfocused = \"{}ff\"\nunfocused = \"{}ff\"\n",
+        hex(c.accent),
+        hex(c.raised),
+    )
+}
+
+// Umbriel watches its own config file but not every file it includes, so it's asked to read them again. only while
+// it's the compositor running: the command would fail anywhere else
+fn reload_umbriel() {
+    if std::env::var_os("UMBRIEL_SOCKET").is_none() {
+        return;
+    }
+
+    let _ = Command::new("umbriel")
+        .args(["msg", "config-reload"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 // only the base colours: the 16 terminal colours keep their usual hues, which programs rely on, apart from the black
@@ -933,6 +966,21 @@ mod tests {
 
         // 21 plain colours and nine gradients of three
         assert_eq!(theme.lines().filter(|line| line.starts_with("theme[")).count(), 21 + 27);
+    }
+
+    #[test]
+    fn umbriel_gets_both_border_colours_with_alpha() {
+        let colors = super::Colors::from(&crate::theme::derive(Color::rgb(20, 24, 30), Color::rgb(230, 230, 230), Color::rgb(0xea, 0x70, 0x7c)));
+
+        let file = super::umbriel(&colors);
+
+        assert!(file.contains("[colors.border]\n"));
+
+        for key in ["focused", "unfocused"] {
+            let line = file.lines().find(|line| line.starts_with(&format!("{key} = "))).unwrap_or_else(|| panic!("no {key}"));
+
+            assert_eq!(line.len(), key.len() + 3 + 11, "{line}");
+        }
     }
 
     #[test]

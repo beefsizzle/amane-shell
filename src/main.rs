@@ -4,6 +4,7 @@ mod btpanel;
 mod btstate;
 mod cache;
 mod clipboard;
+mod compositor;
 mod calendar;
 mod clock;
 mod dashboard;

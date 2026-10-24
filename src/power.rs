@@ -6,13 +6,13 @@ use crate::ui::{hover, icon, label, set_hover};
 
 /*
  * the power dropdown under the power button. every entry has a number key, the same one every time,
- * so 3 is always sleep. bound to Alt+X in niri.
+ * so 3 is always sleep. bound to Alt+X in niri and Umbriel.
  */
 const WIDTH: f32 = 250.0;
 
-// the commands behind the entries, shared with the dashboard's buttons and the `sleep` ipc call
+// the commands behind the entries, shared with the dashboard's buttons and the `sleep` ipc call. logging out depends
+// on the compositor, see compositor.rs
 pub const SUSPEND: &str = "systemctl suspend";
-pub const LOG_OUT: &str = "niri msg action quit --skip-confirmation";
 pub const REBOOT: &str = "systemctl reboot";
 pub const POWER_OFF: &str = "systemctl poweroff";
 const ROW: f32 = 40.0;
@@ -42,7 +42,7 @@ fn lock() {
 fn log_out() {
     panels::close();
 
-    amane::spawn(LOG_OUT);
+    amane::spawn(crate::compositor::log_out());
 }
 
 fn sleep() {

@@ -62,6 +62,24 @@ binds {
 
 Blur behind the bar and panels: add [`dev/niri-layer-rules.kdl`](dev/niri-layer-rules.kdl).
 
+## Umbriel
+
+It runs on [Umbriel](https://docs.noctalia.dev/umbriel/) too. Screenshots there need `grim` and `slurp`. In
+`~/.config/umbriel/config.toml`:
+
+```toml
+[general]
+autostart = ["amane run"]
+
+[keybinds]
+"Mod+Space" = "spawn:amane ipc call toggle launcher"
+"Mod+Alt+L" = "spawn:amane ipc call lock"
+
+[[layer_rule]]
+match.namespace = "^amane-(bar|panel|dock)$"
+blur = true
+```
+
 ## Other apps' colours
 
 The shell can write the wallpaper colours for other apps, live where the app allows it. List the apps in
@@ -71,6 +89,7 @@ The shell can write the wallpaper colours for other apps, live where the app all
 |---|---|---|
 | `gtk` (GTK4 / libadwaita) | `~/.config/gtk-4.0/daru.css` (read when an app starts), and GNOME's `accent-color` (live, nearest of its 9) | `@import url("daru.css");` in `~/.config/gtk-4.0/gtk.css` |
 | `niri` (focus ring) | `~/.config/niri/daru-colors.kdl` | `include "daru-colors.kdl"` at the end of `config.kdl` |
+| `umbriel` (window borders) | `~/.config/umbriel/daru-colors.toml` (live) | `[include.optional] files = ["daru-colors.toml"]` in `~/.config/umbriel/config.toml` |
 | `ghostty` | `~/.config/ghostty/daru-colors` | `config-file = ?daru-colors` |
 | `zed` | `~/.config/zed/themes/daru.json` | pick the "Daru" theme |
 | `kde` (Dolphin, Qt apps) | `~/.local/share/color-schemes/Daru.colors`, and the colours in `~/.config/kdeglobals` (live) | install `plasma-integration` and set `QT_QPA_PLATFORMTHEME=kde` |

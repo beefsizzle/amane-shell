@@ -77,7 +77,7 @@ fn header(t: &Theme) -> Row {
             amane::Lock::start();
         }),
         power_button("sleep", t, armed, "\u{f186}", "sleep", crate::power::SUSPEND),
-        power_button("logout", t, armed, "\u{f08b}", "log out", crate::power::LOG_OUT),
+        power_button("logout", t, armed, "\u{f08b}", "log out", crate::compositor::log_out()),
         power_button("reboot", t, armed, "\u{f021}", "restart", crate::power::REBOOT),
         power_button("shutdown", t, armed, "\u{f011}", "shut down", crate::power::POWER_OFF),
     ])
@@ -219,7 +219,8 @@ fn tiles(t: &Theme) -> Column {
         tile("t-shot", t, "\u{f030}", "Screenshot", "Region", false, |_| {
             panels::close();
 
-            amane::spawn("sh -c 'sleep 0.3; niri msg action screenshot'");
+            // a moment for the dashboard to close first, so it isn't in the picture
+            amane::spawn(&format!("sleep 0.3; {}", crate::compositor::screenshot_region()));
         }),
     ])
     .gap(10.0);
